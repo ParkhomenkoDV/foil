@@ -349,7 +349,7 @@ class Foil:
         print('Foil.rnd = 4  # количество значащих цифр')
         print('foil.vocabulary  # словарь терминов и атрибутов')
         print()
-        print('airfoil = Airfoil(method, discreteness, relative_step, gamma, **attributes)  # создание объекта')
+        print('airfoil = Foil(method, discreteness, relative_step, gamma, **attributes)  # создание объекта')
         print('где:')
         print('discreteness:  int >= 3      # количество дискретных точек')
         print('relative_step: int > 0       # относительный шаг')
@@ -437,8 +437,7 @@ class Foil:
 
     def reset(self):
         """Сброс расчетов"""
-        self.__coordinates = tuple()
-        self.__x, self.__y = tuple, tuple()
+        self.__coordinates, self.__x, self.__y = tuple(), tuple, tuple()
         self.__properties = dict()
         self.__channel = tuple()
 
@@ -517,13 +516,13 @@ class Foil:
         """Функция спинки аэродинамического профиля"""
         assert isinstance(kind, int) and 1 <= kind <= 3
         upper = self.upper_lower(self.coordinates)['upper']
-        return interpolate.interp1d(*array(upper).T, kind=kind, fill_value=fill_value)
+        return interpolate.interp1d(*array(upper, dtype='float64').T, kind=kind, fill_value=fill_value)
 
     def function_lower(self, kind, fill_value='extrapolate') -> interpolate.interp1d:
         """Функция корыта аэродинамического профиля"""
         assert isinstance(kind, int) and 1 <= kind <= 3
         lower = self.upper_lower(self.coordinates)['lower']
-        return interpolate.interp1d(*array(lower).T, kind=kind, fill_value=fill_value)
+        return interpolate.interp1d(*array(lower, dtype='float64').T, kind=kind, fill_value=fill_value)
 
     # TODO
     def input(self):
@@ -577,9 +576,9 @@ class Foil:
 
         gradYf = 2 * self.relative_camber
 
-        a = array((0.2969, -0.126, -0.3516, 0.2843, -0.1036 if self.closed else -0.1015), dtype='float64')
+        coefs = array((0.2969, -0.126, -0.3516, 0.2843, -0.1036 if self.closed else -0.1015), dtype='float64')
 
-        yc = self.relative_thickness / 0.2 * np.dot(a, np.column_stack((sqrt(x), x, x ** 2, x ** 3, x ** 4)).T)
+        yc = self.relative_thickness / 0.2 * np.dot(coefs, np.column_stack((sqrt(x), x, x ** 2, x ** 3, x ** 4)).T)
 
         tetta = atan(gradYf)
 
@@ -815,35 +814,36 @@ class Foil:
         return coordinates
 
     def __manual(self) -> tuple[tuple[float, float], ...]:
-        X, Y = array(self.points, dtype='float64').T
-        xargmin, xargmax = np.argmin(X), np.argmax(X)
-        angle = atan((Y[xargmax] - Y[xargmin]) / (X[xargmax] - X[xargmin]))  # угол поворота
-        coordinates = self.transform(tuple(((x, y) for x, y in zip(X, Y))), angle=angle)  # поворот
+        coordinates = array(self.points, dtype='float64')
+        for _ in range(3):  # для однозначности поворота
+            X, Y = array(coordinates, dtype='float64').T
+            xargmin, xargmax = np.argmin(X), np.argmax(X)
+            angle = atan((Y[xargmax] - Y[xargmin]) / (X[xargmax] - X[xargmin]))  # угол поворота
+            coordinates = self.transform(tuple(((x, y) for x, y in zip(X, Y))), angle=angle)  # поворот
         x, y = array(coordinates).T
-        self.__chord = x.max() - x.min()  # длина хорды
-        coordinates = self.transform(coordinates, x0=x.min(), y0=y[0], scale=(1 / self.__chord))  # нормализация
-
-        if 1:
-            fig = plt.figure()
-            plt.title('manual1')
-            plt.axis('equal')
-            plt.plot(*array(coordinates).T, color='black')
-            plt.show()
+        coordinates = self.transform(coordinates,
+                                     x0=x.min(), y0=y[np.argmin(x)], scale=(1 / (x.max() - x.min())))  # нормализация
 
         upper_lower = self.upper_lower(coordinates)
-        xu, yu = array(upper_lower['upper']).T
-        xl, yl = array(upper_lower['lower']).T
-        fu, fl = interpolate.interp1d(xu, yu, kind=self.deg), interpolate.interp1d(xl, yl, kind=self.deg)
-        # увеличение дискретизации
-        X = linspace(0, 1, self.__discreteness, endpoint=True)
-        coordinates = [(x, y) for x, y in zip(X[::-1], fu(X[::-1]))] + [(x, y) for x, y in zip(X[1::], fl(X[1::]))]
-
-        if 1:
-            fig = plt.figure()
-            plt.title('manual2')
-            plt.axis('equal')
-            plt.plot(*array(coordinates).T, color='black')
-            plt.show()
+        (xu, yu), (xl, yl) = array(upper_lower['upper']).T, array(upper_lower['lower']).T
+        fu = interpolate.interp1d(xu, yu, kind=self.deg, fill_value='extrapolate')
+        fl = interpolate.interp1d(xl, yl, kind=self.deg, fill_value='extrapolate')
+        epsrel = 0.000_1
+        limit = int(ceil(1 / epsrel))  # предел дискретизации точек интегрирования
+        coordinates = list()
+        for f, is_upper in zip((fu, fl), (True, False)):
+            l = integrate.quad(lambda x: sqrt(1 + derivative(f, x) ** 2), 0, 1, epsrel=epsrel, limit=limit)[0]
+            step = l / self.__discreteness
+            x = [0]
+            while True:  # увеличение дискретизации
+                X = x[-1] + step * tan2cos(derivative(f, x[-1]))
+                if X > 1: break
+                x.append(X)
+            X = array(x + [1], dtype='float64')
+            if is_upper:
+                coordinates += [(x, y) for x, y in zip(X[::-1], f(X[::-1]))]
+            else:
+                coordinates += [(x, y) for x, y in zip(X[1::], fl(X[1::]))]
 
         return tuple(coordinates)
 
@@ -935,8 +935,6 @@ class Foil:
         else:
             print(Fore.RED + f'No such method {self.method}! Use Airfoil.help' + Fore.RESET)
 
-        if not hasattr(self, '_Foil__chord'): self.__chord = 1  # длина хорды
-
         self.__coordinates = self.transform(self.__coordinates0, angle=self.__installation_angle)  # поворот
         coordinates = array(self.__coordinates, dtype='float64').T
         x_min, x_max = coordinates[0].min(), coordinates[0].max()
@@ -956,7 +954,7 @@ class Foil:
     @staticmethod
     def upper_lower(coordinates: tuple[tuple[float, float], ...]) -> dict[str:tuple[tuple[float, float], ...]]:
         """Разделение координат на спинку и корыто"""
-        X, Y = array(coordinates).T
+        X, Y = array(coordinates, dtype='float64').T
         argmin, argmax = np.argmin(X), np.argmax(X)
         upper, lower = list(), list()
         if argmin < argmax:
@@ -974,7 +972,7 @@ class Foil:
         """Построение профиля"""
         assert isinstance(amount, int) and 1 <= amount  # количество профилей
 
-        X, Y = array(self.coordinates).T  # запуск расчета
+        X, Y = array(self.coordinates, dtype='float32').T  # запуск расчета
         coordinates0 = self.upper_lower(self.__coordinates0)
         x, y, d, r = self.channel.T
 
@@ -1006,8 +1004,8 @@ class Foil:
         plt.grid(True)  # сетка
         plt.axis('equal')
         plt.xlim([0, 1])
-        plt.plot(*array(coordinates0['upper']).T, ls='solid', color='blue', linewidth=2)
-        plt.plot(*array(coordinates0['lower']).T, ls='solid', color='red', linewidth=2)
+        plt.plot(*array(coordinates0['upper'], dtype='float16').T, ls='solid', color='blue', linewidth=2)
+        plt.plot(*array(coordinates0['lower'], dtype='float16').T, ls='solid', color='red', linewidth=2)
 
         fg.add_subplot(gs[1, 1])
         plt.title('Channel')
@@ -1029,7 +1027,7 @@ class Foil:
                  (1, 1), (np.max(Y), np.min(Y) - (amount - 1) * self.__relative_step),
                  ls='solid', color='black')  # границы решетки
         for n in range(amount): plt.plot(X, Y - n * self.__relative_step, ls='solid', color='black', linewidth=2)
-        alpha = linspace(0, 2 * pi, 360)
+        alpha = linspace(0, 2 * pi, 360, dtype='float16')
         for i in range(len(d)):
             plt.plot(list(d[i] / 2 * cos(alpha) + x[i]), list(d[i] / 2 * sin(alpha) + y[i]), ls='solid', color='green')
         plt.plot(x, y, ls='dashdot', color='orange')
@@ -1220,7 +1218,7 @@ def test() -> None:
 
     foils = list()
 
-    if 'NACA' != '':
+    if 'NACA' == '':
         foils.append(Foil('NACA', 40, 1 / 1.698, radians(46.23), name='NACA'))
 
         foils[-1].relative_thickness = 0.2
@@ -1228,7 +1226,7 @@ def test() -> None:
         foils[-1].relative_camber = 0.05
         foils[-1].closed = True
 
-    if 'BMSTU' != '':
+    if 'BMSTU' == '':
         foils.append(Foil('BMSTU', 30, 1 / 1.698, radians(46.23), name='BMSTU'))
 
         foils[-1].rotation_angle = radians(70)
@@ -1237,12 +1235,12 @@ def test() -> None:
         foils[-1].x_ray_cross = 0.4
         foils[-1].upper_proximity = 0.5
 
-    if 'MYNK' != '':
+    if 'MYNK' == '':
         foils.append(Foil('MYNK', 20, 1 / 1.698, radians(46.23), name='MYNK'))
 
         foils[-1].mynk_coefficient = 0.2
 
-    if 'PARSEC' != '':
+    if 'PARSEC' == '':
         foils.append(Foil('PARSEC', 50, 1 / 1.698, radians(46.23), name='PARSEC'))
 
         foils[-1].relative_inlet_radius = 0.06
@@ -1251,7 +1249,7 @@ def test() -> None:
         foils[-1].d2y_dx2_upper, foils[-1].d2y_dx2_lower = -0.85, -0.06
         foils[-1].theta_outlet_upper, foils[-1].theta_outlet_lower = radians(-6), radians(3)
 
-    if 'BEZIER' != '':
+    if 'BEZIER' == '':
         foils.append(Foil('BEZIER', 30, 1 / 1.698, radians(46.23), name='BEZIER'))
 
         foils[-1].points = ((1.0, 0.0), (0.35, 0.200), (0.05, 0.100),
