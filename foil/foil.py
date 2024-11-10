@@ -264,9 +264,6 @@ VOCABULARY = MappingProxyType({
 })
 
 
-#TODO: убрать атрибуты в пользу одного атрибута в виде словаря, передаваемого при обучении
-#TODO: добавить длину хорды
-
 class Foil:
     """Относительный профиль"""
 
@@ -327,13 +324,7 @@ class Foil:
     __RELATIVE_STEP = 1.0  # дефолтный относительный шаг []
     __INSTALLATION_ANGLE = 0.0  # дефолтный угол установки [рад]
 
-    @classmethod
-    @property
-    def __version__(cls) -> str:
-        version = '4.0'
-        todo = ('Дописать help', 'Сделать продувку')
-        for i, td in enumerate(todo): print(float(version) + (i + 1), td)
-        return version
+    # __slots__ = () #TODO: убрать атрибуты в пользу одного атрибута в виде словаря, передаваемого при обучении
 
     @property
     def rnd(self) -> int:
@@ -505,7 +496,7 @@ class Foil:
     @property
     def coordinates(self) -> tuple[tuple[float, float], ...]:
         """Координаты аэродинамического профиля считая от выходной кромки против часовой стрелки"""
-        if len(self.__coordinates) == 0: self.__calculate()
+        if len(self.__coordinates) == 0: self.__fit()
         return self.__coordinates
 
     def xy(self) -> tuple[tuple[float, ...], tuple[float, ...]]:
@@ -918,7 +909,7 @@ class Foil:
 
         return tuple((x, y) for x, y in zip(X, Y))
 
-    def __calculate(self) -> tuple[tuple[float, float], ...]:
+    def __fit(self) -> tuple[tuple[float, float], ...]:
         self.validate()
 
         if self.method in Foil.__METHODS['NACA']['aliases']:
@@ -941,8 +932,8 @@ class Foil:
         self.__coordinates = self.transform(self.__coordinates0, angle=self.__installation_angle)  # поворот
         coordinates = array(self.__coordinates, dtype='float64').T
         x_min, x_max = coordinates[0].min(), coordinates[0].max()
-        scale = abs(x_max - x_min)
-        self.__coordinates = self.transform(self.__coordinates, x0=x_min, scale=(1 / scale))  # нормал
+        self.__chord = abs(x_max - x_min)  # длина хорды
+        self.__coordinates = self.transform(self.__coordinates, x0=x_min, scale=(1 / self.__chord))  # нормализация
         return self.__coordinates
 
     def transform(self, coordinates: tuple[tuple[float, float], ...],
@@ -1212,7 +1203,6 @@ class Foil:
 
 def test() -> None:
     """Тестирование"""
-    print(Foil.__version__)
 
     Foil.help()
 
@@ -1221,79 +1211,90 @@ def test() -> None:
 
     foils = list()
 
-    if 'NACA' == '':
-        foils.append(Foil('NACA', 40, 1 / 1.698, radians(46.23), name='NACA'))
+    if 'NACA' != '':
+        parameters = {
+            'relative_thickness': 0.2,
+            'x_relative_camber': 0.3,
+            'relative_camber': 0.05,
+            'closed': True, }
 
-        foils[-1].relative_thickness = 0.2
-        foils[-1].x_relative_camber = 0.3
-        foils[-1].relative_camber = 0.05
-        foils[-1].closed = True
+        foils.append(Foil('NACA', 40, 1 / 1.698, radians(46.23), name='NACA',
+                          **parameters))
 
-    if 'BMSTU' == '':
-        foils.append(Foil('BMSTU', 30, 1 / 1.698, radians(46.23), name='BMSTU'))
+    if 'BMSTU' != '':
+        parameters = {
+            'rotation_angle': radians(70),
+            'relative_inlet_radius': 0.06, 'relative_outlet_radius': 0.03,
+            'inlet_angle': radians(20), 'outlet_angle': radians(10),
+            'x_ray_cross': 0.4,
+            'upper_proximity': 0.5, }
 
-        foils[-1].rotation_angle = radians(70)
-        foils[-1].relative_inlet_radius, foils[-1].relative_outlet_radius = 0.06, 0.03
-        foils[-1].inlet_angle, foils[-1].outlet_angle = radians(20), radians(10)
-        foils[-1].x_ray_cross = 0.4
-        foils[-1].upper_proximity = 0.5
+        foils.append(Foil('BMSTU', 30, 1 / 1.698, radians(46.23), name='BMSTU',
+                          **parameters))
 
-    if 'MYNK' == '':
-        foils.append(Foil('MYNK', 20, 1 / 1.698, radians(46.23), name='MYNK'))
+    if 'MYNK' != '':
+        parameters = {'mynk_coefficient': 0.2, }
 
-        foils[-1].mynk_coefficient = 0.2
+        foils.append(Foil('MYNK', 20, 1 / 1.698, radians(46.23), name='MYNK',
+                          **parameters))
 
-    if 'PARSEC' == '':
-        foils.append(Foil('PARSEC', 50, 1 / 1.698, radians(46.23), name='PARSEC'))
+    if 'PARSEC' != '':
+        parameters = {
+            'relative_inlet_radius': 0.06,
+            'x_relative_camber_upper': 0.25, 'x_relative_camber_lower': 0.35,
+            'relative_camber_upper': 0.1, 'relative_camber_lower': -0.05,
+            'd2y_dx2_upper': -0.85, 'd2y_dx2_lower': -0.06,
+            'theta_outlet_upper': radians(-6), 'theta_outlet_lower': radians(3), }
 
-        foils[-1].relative_inlet_radius = 0.06
-        foils[-1].x_relative_camber_upper, foils[-1].x_relative_camber_lower = 0.25, 0.35
-        foils[-1].relative_camber_upper, foils[-1].relative_camber_lower = 0.1, -0.05
-        foils[-1].d2y_dx2_upper, foils[-1].d2y_dx2_lower = -0.85, -0.06
-        foils[-1].theta_outlet_upper, foils[-1].theta_outlet_lower = radians(-6), radians(3)
+        foils.append(Foil('PARSEC', 50, 1 / 1.698, radians(46.23), name='PARSEC',
+                          **parameters))
 
-    if 'BEZIER' == '':
-        foils.append(Foil('BEZIER', 30, 1 / 1.698, radians(46.23), name='BEZIER'))
+    if 'BEZIER' != '':
+        parameters = {'points': ((1.0, 0.0), (0.35, 0.200), (0.05, 0.100),
+                                 (0.0, 0.0),
+                                 (0.05, -0.10), (0.35, -0.05), (0.5, 0.0), (1.0, 0.0)), }
 
-        foils[-1].points = ((1.0, 0.0), (0.35, 0.200), (0.05, 0.100),
-                            (0.0, 0.0),
-                            (0.05, -0.10), (0.35, -0.05), (0.5, 0.0), (1.0, 0.0))
+        foils.append(Foil('BEZIER', 30, 1 / 1.698, radians(46.23), name='BEZIER',
+                          **parameters))
 
     if 'MANUAL' != '':
-        foils.append(Foil('MANUAL', 30, 1 / 1.698, radians(46.23), name='MANUAL'))
+        parameters = {'points': ((1.0, 0.0), (0.5, 0.15), (0.35, 0.150), (0.10, 0.110), (0.05, 0.08),
+                                 (0.0, 0.0),
+                                 (0.05, -0.025), (0.35, -0.025), (0.5, 0.0), (0.8, 0.025), (1.0, 0.0)),
+                      'deg': 3, }
 
-        foils[-1].points = ((1.0, 0.0), (0.5, 0.15), (0.35, 0.150), (0.10, 0.110), (0.05, 0.08),
-                            (0.0, 0.0),
-                            (0.05, -0.025), (0.35, -0.025), (0.5, 0.0), (0.8, 0.025), (1.0, 0.0))
-        foils[-1].deg = 3
-
-    if 'CIRCLE' != '':
-        foils.append(Foil('CIRCLE', 60, 0.5, radians(30), name='CIRCLE'))
-
-        foils[-1].relative_circles = ((0.1, 0.04),
-                                      (0.2, 0.035),
-                                      (0.3, 0.03),
-                                      (0.4, 0.028),
-                                      (0.5, 0.025),
-                                      (0.6, 0.02),)
-        foils[-1].rotation_angle = radians(40)
-        foils[-1].x_ray_cross = 0.5
-        foils[-1].is_airfoil = True
+        foils.append(Foil('MANUAL', 30, 1 / 1.698, radians(46.23), name='MANUAL',
+                          **parameters))
 
     if 'CIRCLE' != '':
-        foils.append(Foil('CIRCLE', 60, 0.5, radians(30), name='CIRCLE'))
+        parameters = {'relative_circles': ((0.1, 0.04),
+                                           (0.2, 0.035),
+                                           (0.3, 0.03),
+                                           (0.4, 0.028),
+                                           (0.5, 0.025),
+                                           (0.6, 0.02),),
+                      'rotation_angle': radians(40),
+                      'x_ray_cross': 0.5,
+                      'is_airfoil': True, }
 
-        foils[-1].relative_circles = ((0.1, 0.4),
-                                      (0.2, 0.4),
-                                      (0.3, 0.4),
-                                      (0.4, 0.4),
-                                      (0.5, 0.4),
-                                      (0.6, 0.4),
-                                      (0.8, 0.4),
-                                      (0.9, 0.4),)
-        foils[-1].rotation_angle = radians(40)
-        foils[-1].x_ray_cross = 0.5
-        foils[-1].is_airfoil = False
+        foils.append(Foil('CIRCLE', 60, 0.5, radians(30), name='CIRCLE',
+                          **parameters))
+
+    if 'CIRCLE' != '':
+        parameters = {'relative_circles': ((0.1, 0.4),
+                                           (0.2, 0.4),
+                                           (0.3, 0.4),
+                                           (0.4, 0.4),
+                                           (0.5, 0.4),
+                                           (0.6, 0.4),
+                                           (0.8, 0.4),
+                                           (0.9, 0.4),),
+                      'rotation_angle': radians(40),
+                      'x_ray_cross': 0.5,
+                      'is_airfoil': False, }
+
+        foils.append(Foil('CIRCLE', 60, 0.5, radians(30), name='CIRCLE',
+                          **parameters))
 
     if 'Load' != '':
         foil = Foil('NACA', 40, 1, radians(20),
