@@ -34,17 +34,40 @@ REFERENCES = MappingProxyType({
 
 # словарь терминов их описания, единицы измерения и граничные значения
 VOCABULARY = MappingProxyType({
+    'method': {
+        'description': 'название профиля',
+        'unit': '[]',
+        'type': (str,),
+        'assert': (lambda method:
+                   '' if method.strip().upper() in ("NACA", "BMSTU", "MYNK", "PARSEC", "BEZIER", "MANUAL", "CIRCLE")
+                   else 'method not in ("NACA", "BMSTU", "MYNK", "PARSEC", "BEZIER", "MANUAL", "CIRCLE")',), },
+    'discreteness': {
+        'description': 'дискретность',
+        'unit': '[]',
+        'type': (int, np.integer),
+        'assert': (lambda discreteness: '' if 3 <= discreteness else '3 <= discreteness',), },
+    'relative_step': {
+        'description': 'относительный шаг решетки профилей',
+        'unit': '[]',
+        'type': (float, int, np.number),
+        'assert': (lambda relative_step: '' if 0 < relative_step else '0 < relative_step',), },
+    'installation_angle': {
+        'description': 'угол установки профиля',
+        'unit': '[]',
+        'type': (float, int, np.number),
+        'assert': (lambda installation_angle:
+                   '' if -pi / 2 <= installation_angle <= pi / 2 else '-pi / 2 <= installation_angle <= pi / 2',), },
     'name': {
         'description': 'название профиля',
         'unit': '[]',
         'type': (str,),
         'assert': (lambda name: '' if all(symbol not in name for symbol in ".$#*{}\|/?:><%")
         else 'all(symbol not in name for symbol in ".$#*{}\|/?:><%"',), },
-    'method': {
-        'description': 'название профиля',
+    'parameters': {
+        'description': 'параметры профиля',
         'unit': '[]',
-        'type': (str,),
-        'assert': tuple(), },
+        'type': (dict,),
+        'assert': (lambda parameters: '' if len(parameters) > 0 else 'parameters is empty',), },
     'coordinates': {
         'description': 'координаты профиля считая от выходной кромки против часовой стрелки',
         'unit': '[]',
@@ -102,11 +125,7 @@ VOCABULARY = MappingProxyType({
                    lambda lower:
                    '' if tuple(lower) == tuple(sorted(lower, key=lambda point: point[0], reverse=False))
                    else 'tuple(lower) == tuple(sorted(lower, key=lambda point: point[0], reverse=False))',), },
-    'discreteness': {
-        'description': 'дискретность',
-        'unit': '[]',
-        'type': (int, np.integer),
-        'assert': (lambda discreteness: '' if 3 <= discreteness else '3 <= discreteness',), },
+
     'rotation_angle': {
         'description': 'угол поворота потока',
         'unit': '[рад]',
@@ -271,9 +290,14 @@ class Foil:
     __DISCRETENESS = 30  # рекомендуемое количество дискретных точек
     # TODO
     __METHODS = {
+        'NACA': {'description': '',
+                 'attributes': {
+                     'relative_thickness': VOCABULARY['relative_thickness'],
+                     'x_relative_camber': VOCABULARY['x_relative_camber'],
+                     'relative_camber': VOCABULARY['relative_camber'],
+                     'closed': VOCABULARY['closed'], }},
         'BMSTU': {
             'description': '',
-            'aliases': ('BMSTU', 'МГТУ', 'МВТУ', 'МИХАЛЬЦЕВ'),
             'attributes': {
                 'rotation_angle': VOCABULARY['rotation_angle'],
                 'relative_inlet_radius': VOCABULARY['relative_inlet_radius'],
@@ -282,19 +306,10 @@ class Foil:
                 'outlet_angle': VOCABULARY['outlet_angle'],
                 'x_ray_cross': VOCABULARY['x_ray_cross'],
                 'upper_proximity': VOCABULARY['upper_proximity']}},
-        'NACA': {'description': '',
-                 'aliases': ('NACA', 'N.A.C.A.'),
-                 'attributes': {
-                     'relative_thickness': VOCABULARY['relative_thickness'],
-                     'x_relative_camber': VOCABULARY['x_relative_camber'],
-                     'relative_camber': VOCABULARY['relative_camber'],
-                     'closed': VOCABULARY['closed'], }},
         'MYNK': {'description': '',
-                 'aliases': ('MYNK', 'МУНК'),
                  'attributes': {
                      'mynk_coefficient': VOCABULARY['mynk_coefficient'], }},
         'PARSEC': {'description': '',
-                   'aliases': ('PARSEC',),
                    'attributes': {
                        'relative_inlet_radius': VOCABULARY['relative_inlet_radius'],
                        'x_relative_camber_upper': VOCABULARY['x_relative_camber_upper'],
@@ -310,12 +325,10 @@ class Foil:
                    'attributes': {
                        'points': VOCABULARY['points'], }},
         'MANUAL': {'description': '',
-                   'aliases': ('MANUAL', 'SPLINE', 'ВРУЧНУЮ'),
                    'attributes': {
                        'points': VOCABULARY['points'],
                        'deg': VOCABULARY['deg'], }},
         'CIRCLE': {'description': '',
-                   'aliases': ('CIRCLE', 'ОКРУЖНОСТЬ',),
                    'attributes': {
                        'relative_circles': VOCABULARY['relative_circles'],
                        'rotation_angle': VOCABULARY['rotation_angle'],
@@ -324,7 +337,11 @@ class Foil:
     __RELATIVE_STEP = 1.0  # дефолтный относительный шаг []
     __INSTALLATION_ANGLE = 0.0  # дефолтный угол установки [рад]
 
-    # __slots__ = () #TODO: убрать атрибуты в пользу одного атрибута в виде словаря, передаваемого при обучении
+    __slots__ = ('__method',  # необходимый параметр
+                 '__discreteness',
+                 '__relative_step', '__installation_angle',
+                 '__name', '__parameters',
+                 '__coordinates0', '__coordinates', '__x', '__y', '__chord', '__properties', '__channel')
 
     @property
     def rnd(self) -> int:
@@ -353,7 +370,6 @@ class Foil:
         for method in Foil.__METHODS:
             print(method)
             print('\t' + f'description: {Foil.__METHODS[method]["description"]}')
-            print('\t' + f'aliases: {Foil.__METHODS[method]["aliases"]}')
             print('\t' + f'attributes:')
             for attribute in Foil.__METHODS[method]["attributes"]:
                 print('\t\t' + Fore.CYAN + f'{attribute}' + Fore.RESET)
@@ -369,57 +385,38 @@ class Foil:
     def validate(self, **kwargs) -> None:
         """Проверка верности ввода атрибутов профиля"""
 
-        name = kwargs.pop('name', None)
-        if name is not None:
-            assert isinstance(name, str)
+        for key, value in kwargs.items():
+            assert isinstance(value, VOCABULARY[key]['type'])
+            for ass in VOCABULARY[key]['assert']: assert not ass(value), ass(value)
 
-        method = kwargs.pop('method', None)
-        if method is not None:
-            assert isinstance(method, str)
-            method = method.strip().upper()
-            assert any(method in value['aliases'] for value in Foil.__METHODS.values())
-
-        discreteness = kwargs.pop('discreteness', None)
-        if discreteness is not None:
-            assert isinstance(discreteness, int)
-            for ass in VOCABULARY['discreteness']['assert']: assert not ass(discreteness), ass(discreteness)
-
-        relative_step = kwargs.pop('relative_step', None)
-        if relative_step is not None:
-            assert isinstance(relative_step, (float, int, np.number)) and 0 < relative_step
-
-        installation_angle = kwargs.pop('installation_angle', None)
-        if installation_angle is not None:
-            assert isinstance(installation_angle, (float, int, np.number)) and -pi / 2 <= installation_angle <= pi / 2
-
-        if hasattr(self, '_Foil__method'):
-            for attr in Foil.__METHODS[self.__method]['attributes']:
-                assert hasattr(self, attr), f'not hasattr({attr})'
-                assert isinstance(getattr(self, attr), Foil.__METHODS[self.__method]['attributes'][attr]['type']), \
-                    f'type({attr}) not in {Foil.__METHODS[self.__method]["attributes"][attr]["type"]}'
-                for ass in Foil.__METHODS[self.__method]['attributes'][attr]["assert"]:
-                    assert not ass(getattr(self, attr)), ass(getattr(self, attr))
+        method, parameters = kwargs.pop('method', None), kwargs.pop('parameters', None)
+        if method is not None and parameters is not None:
+            for attr in Foil.__METHODS[method]['attributes']:
+                assert attr in parameters, f'{attr} not in parameters'
+                assert isinstance(parameters[attr], Foil.__METHODS[method]['attributes'][attr]['type']), \
+                    f'type({attr}) not in {Foil.__METHODS[method]["attributes"][attr]["type"]}'
+                for ass in Foil.__METHODS[method]['attributes'][attr]["assert"]:
+                    assert not ass(parameters[attr]), ass(parameters[attr])
 
     def __init__(self, method: str, discreteness: int = __DISCRETENESS,
                  relative_step: float | int = __RELATIVE_STEP, installation_angle: float | int = __INSTALLATION_ANGLE,
                  name: str = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime()),
-                 **attributes):
-        self.validate(name=name, method=method, discreteness=discreteness,
-                      relative_step=relative_step, installation_angle=installation_angle)
+                 **parameters):
+        self.validate(method=method, discreteness=discreteness,
+                      relative_step=relative_step, installation_angle=installation_angle,
+                      name=name,
+                      parameters=parameters)
 
-        self.__name = name.strip()  # название профиля
         self.__method = method.strip().upper()  # метод построения аэродинамического профиля
-        self.__discreteness = discreteness  # количество точек дискретизации
+        self.__discreteness = int(discreteness)  # количество точек дискретизации
 
-        self.__relative_step = relative_step  # относительный шаг []
+        self.__relative_step = float(relative_step)  # относительный шаг []
         self.__installation_angle = float(installation_angle)  # угол установки [рад]
 
-        self.__coordinates = tuple()  # относительные координаты профиля считая против часовой стрелки с выходной кромки
-        self.__x, self.__y = tuple(), tuple()  # относительные координты x и y профиля
-        self.__properties = dict()  # относительные характеристики профиля
-        self.__channel = tuple()  # дифузорность/конфузорность решетки
+        self.__name = name.strip()  # название профиля
+        self.__parameters = parameters  # параметры профиля
 
-        for attribute, value in attributes.items(): setattr(self, attribute, value)
+        self.reset()
 
     def __str__(self) -> str:
         return self.__name
@@ -431,38 +428,21 @@ class Foil:
 
     def reset(self):
         """Сброс расчетов"""
-        self.__coordinates, self.__x, self.__y = tuple(), tuple, tuple()
-        self.__properties = dict()
-        self.__channel = tuple()
-
-    @property
-    def name(self) -> str:
-        return self.__name
-
-    @name.setter
-    def name(self, value: str) -> None:
-        self.validate(name=value)
-        self.__name = value
-
-    @name.deleter
-    def name(self) -> None:
-        self.__name = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
+        self.__coordinates = tuple()  # относительные координаты профиля считая против часовой стрелки с выходной кромки
+        self.__x, self.__y = tuple(), tuple()  # относительные координты x и y профиля
+        self.__properties = dict()  # относительные характеристики профиля
+        self.__channel = tuple()  # дифузорность/конфузорность решетки
 
     @property
     def method(self) -> str:
         return self.__method
-
-    @method.setter
-    def method(self, value: str) -> None:
-        self.validate(method=value)
-        self.__init__(value)  # снос предыдущих расчетов для нового метода
 
     @property
     def discreteness(self) -> int:
         return self.__discreteness
 
     @discreteness.setter
-    def discreteness(self, value) -> None:
+    def discreteness(self, value: int) -> None:
         self.validate(discreteness=value)
         self.__init__(method=self.method, discreteness=value)
 
@@ -494,6 +474,28 @@ class Foil:
         self.__installation_angle = Foil.__INSTALLATION_ANGLE
 
     @property
+    def name(self) -> str:
+        return self.__name
+
+    @name.setter
+    def name(self, value: str) -> None:
+        self.validate(name=value)
+        self.__name = value
+
+    @name.deleter
+    def name(self) -> None:
+        self.__name = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
+
+    @property
+    def parameters(self) -> dict:
+        return self.__parameters
+
+    @parameters.setter
+    def parameters(self, value: dict):
+        self.validate(method=self.method, parameters=value)
+        # TODO
+
+    @property
     def coordinates(self) -> tuple[tuple[float, float], ...]:
         """Координаты аэродинамического профиля считая от выходной кромки против часовой стрелки"""
         if len(self.__coordinates) == 0: self.__fit()
@@ -517,11 +519,6 @@ class Foil:
         assert isinstance(kind, int) and 1 <= kind <= 3
         lower = self.upper_lower(self.coordinates)['lower']
         return interpolate.interp1d(*array(lower, dtype='float64').T, kind=kind, fill_value=fill_value)
-
-    # TODO
-    def input(self):
-        """Динамический ввод с защитой от дураков"""
-        pass
 
     @classmethod
     def load(cls, points, discreteness: int = __DISCRETENESS,
@@ -556,23 +553,29 @@ class Foil:
         self.to_dataframe().to_excel(f'datas/airfoil_coordinates_{ctime}.xlsx', header=True)
         pd.DataFrame(self.properties, index=[0]).to_excel(f'datas/airfoil_properties_{ctime}.xlsx', header=True)
 
-    def __naca(self) -> tuple[tuple[float, float], ...]:
-        i = arange(self.__discreteness)  # массив индексов
-        betta = i * pi / (2 * (self.__discreteness - 1))
+    def __naca(self, discreteness: int, **kwargs) -> tuple[tuple[float, float], ...]:
+
+        x_relative_camber = kwargs['x_relative_camber']
+        relative_camber = kwargs['relative_camber']
+        relative_thickness = kwargs['relative_thickness']
+        closed = kwargs['closed']
+
+        i = arange(discreteness)  # массив индексов
+        betta = i * pi / (2 * (discreteness - 1))
         x = 1 - cos(betta)
 
-        mask = (0 <= x) & (x <= self.x_relative_camber)
+        mask = (0 <= x) & (x <= x_relative_camber)
 
-        yf = full_like(i, self.relative_camber, dtype='float64')
-        yf[mask] *= self.x_relative_camber ** (-2) * (2 * self.x_relative_camber * x[mask] - x[mask] ** 2)
-        yf[~mask] *= (1 - self.x_relative_camber) ** (-2) * (
-                1 - 2 * self.x_relative_camber + 2 * self.x_relative_camber * x[~mask] - x[~mask] ** 2)
+        yf = full_like(i, relative_camber, dtype='float64')
+        yf[mask] *= x_relative_camber ** (-2) * (2 * x_relative_camber * x[mask] - x[mask] ** 2)
+        yf[~mask] *= ((1 - x_relative_camber) ** (-2) *
+                      (1 - 2 * x_relative_camber + 2 * x_relative_camber * x[~mask] - x[~mask] ** 2))
 
-        gradYf = 2 * self.relative_camber
+        gradYf = 2 * relative_camber
 
-        coefs = array((0.2969, -0.126, -0.3516, 0.2843, -0.1036 if self.closed else -0.1015), dtype='float64')
+        coefs = array((0.2969, -0.126, -0.3516, 0.2843, -0.1036 if closed else -0.1015), dtype='float64')
 
-        yc = self.relative_thickness / 0.2 * np.dot(coefs, np.column_stack((sqrt(x), x, x ** 2, x ** 3, x ** 4)).T)
+        yc = relative_thickness / 0.2 * np.dot(coefs, np.column_stack((sqrt(x), x, x ** 2, x ** 3, x ** 4)).T)
 
         tetta = atan(gradYf)
 
@@ -585,85 +588,89 @@ class Foil:
 
         return self.transform(tuple(((x, y) for x, y in zip(X, Y))), x0=X.min(), scale=(1 / scale))
 
-    def __bmstu(self) -> tuple[tuple[float, float], ...]:
-        airfoil_rotation_angle = pi - self.rotation_angle  # угол поворота профиля
+    def __bmstu(self, discreteness: int, **kwargs) -> tuple[tuple[float, float], ...]:
+
+        rotation_angle = kwargs['rotation_angle']
+        x_ray_cross = kwargs['x_ray_cross']
+        upper_proximity = kwargs['upper_proximity']
+        inlet_angle, outlet_angle = kwargs['inlet_angle'], kwargs['outlet_angle']
+        relative_inlet_radius = kwargs['relative_inlet_radius']
+        relative_outlet_radius = kwargs['relative_outlet_radius']
+
+        airfoil_rotation_angle = pi - rotation_angle  # угол поворота профиля
 
         # tan угла входа и выхода потока
-        k_inlet = 1 / (2 * self.x_ray_cross / (self.x_ray_cross - 1) * tan(airfoil_rotation_angle))
+        k_inlet = 1 / (2 * x_ray_cross / (x_ray_cross - 1) * tan(airfoil_rotation_angle))
         k_outlet = 1 / (2 * tan(airfoil_rotation_angle))
         if tan(airfoil_rotation_angle) * airfoil_rotation_angle > 0:
-            k_inlet *= ((self.x_ray_cross / (self.x_ray_cross - 1) - 1) -
-                        sqrt((self.x_ray_cross / (self.x_ray_cross - 1) - 1) ** 2 -
-                             4 * (self.x_ray_cross / (self.x_ray_cross - 1) * tan(airfoil_rotation_angle) ** 2)))
-            k_outlet *= ((self.x_ray_cross / (self.x_ray_cross - 1) - 1) -
-                         sqrt((self.x_ray_cross / (self.x_ray_cross - 1) - 1) ** 2 -
-                              4 * (self.x_ray_cross / (self.x_ray_cross - 1) * tan(airfoil_rotation_angle) ** 2)))
+            k_inlet *= ((x_ray_cross / (x_ray_cross - 1) - 1) -
+                        sqrt((x_ray_cross / (x_ray_cross - 1) - 1) ** 2 -
+                             4 * (x_ray_cross / (x_ray_cross - 1) * tan(airfoil_rotation_angle) ** 2)))
+            k_outlet *= ((x_ray_cross / (x_ray_cross - 1) - 1) -
+                         sqrt((x_ray_cross / (x_ray_cross - 1) - 1) ** 2 -
+                              4 * (x_ray_cross / (x_ray_cross - 1) * tan(airfoil_rotation_angle) ** 2)))
         else:
-            k_inlet *= ((self.x_ray_cross / (self.x_ray_cross - 1) - 1) +
-                        sqrt((self.x_ray_cross / (self.x_ray_cross - 1) - 1) ** 2 -
-                             4 * (self.x_ray_cross / (self.x_ray_cross - 1) * tan(airfoil_rotation_angle) ** 2)))
-            k_outlet *= ((self.x_ray_cross / (self.x_ray_cross - 1) - 1) +
-                         sqrt((self.x_ray_cross / (self.x_ray_cross - 1) - 1) ** 2 -
-                              4 * (self.x_ray_cross / (self.x_ray_cross - 1) * tan(airfoil_rotation_angle) ** 2)))
+            k_inlet *= ((x_ray_cross / (x_ray_cross - 1) - 1) +
+                        sqrt((x_ray_cross / (x_ray_cross - 1) - 1) ** 2 -
+                             4 * (x_ray_cross / (x_ray_cross - 1) * tan(airfoil_rotation_angle) ** 2)))
+            k_outlet *= ((x_ray_cross / (x_ray_cross - 1) - 1) +
+                         sqrt((x_ray_cross / (x_ray_cross - 1) - 1) ** 2 -
+                              4 * (x_ray_cross / (x_ray_cross - 1) * tan(airfoil_rotation_angle) ** 2)))
 
         # углы входа и выхода профиля
         if airfoil_rotation_angle > 0:
-            g_u_inlet, g_d_inlet = ((1 - self.upper_proximity) *
-                                    self.inlet_angle, self.upper_proximity * self.inlet_angle)
-            g_u_outlet, g_d_outlet = ((1 - self.upper_proximity) *
-                                      self.outlet_angle, self.upper_proximity * self.outlet_angle)
+            g_u_inlet, g_d_inlet = ((1 - upper_proximity) * inlet_angle, upper_proximity * inlet_angle)
+            g_u_outlet, g_d_outlet = ((1 - upper_proximity) * outlet_angle, upper_proximity * outlet_angle)
         else:
-            g_u_inlet, g_d_inlet = self.upper_proximity * self.inlet_angle, (
-                    1 - self.upper_proximity) * self.inlet_angle,
-            g_u_outlet, g_d_outlet = self.upper_proximity * self.outlet_angle, (
-                    1 - self.upper_proximity) * self.outlet_angle
+            g_u_inlet, g_d_inlet = upper_proximity * inlet_angle, (1 - upper_proximity) * inlet_angle,
+            g_u_outlet, g_d_outlet = upper_proximity * outlet_angle, (1 - upper_proximity) * outlet_angle
 
         # положения центров окружностей входной и выходной кромок
-        O_inlet = self.relative_inlet_radius, k_inlet * self.relative_inlet_radius
-        O_outlet = 1 - self.relative_outlet_radius, -k_outlet * self.relative_outlet_radius
+        O_inlet = relative_inlet_radius, k_inlet * relative_inlet_radius
+        O_outlet = 1 - relative_outlet_radius, -k_outlet * relative_outlet_radius
 
         # точки пересечения линий спинки и корыта
         xcl_u, ycl_u = coordinate_intersection_lines(
             (tan(atan(k_inlet) + g_u_inlet), -1,
-             sqrt(tan(atan(k_inlet) + g_u_inlet) ** 2 + 1) * self.relative_inlet_radius -
+             sqrt(tan(atan(k_inlet) + g_u_inlet) ** 2 + 1) * relative_inlet_radius -
              (tan(atan(k_inlet) + g_u_inlet)) * O_inlet[0] - (-1) * O_inlet[1]),
             (tan(atan(k_outlet) - g_u_outlet), -1,
-             sqrt(tan(atan(k_outlet) - g_u_outlet) ** 2 + 1) * self.relative_outlet_radius -
+             sqrt(tan(atan(k_outlet) - g_u_outlet) ** 2 + 1) * relative_outlet_radius -
              (tan(atan(k_outlet) - g_u_outlet)) * O_outlet[0] - (-1) * O_outlet[1]))
 
         xcl_d, ycl_d = coordinate_intersection_lines(
             (tan(atan(k_inlet) - g_d_inlet), -1,
-             -sqrt(tan(atan(k_inlet) - g_d_inlet) ** 2 + 1) * self.relative_inlet_radius -
+             -sqrt(tan(atan(k_inlet) - g_d_inlet) ** 2 + 1) * relative_inlet_radius -
              (tan(atan(k_inlet) - g_d_inlet)) * O_inlet[0] - (-1) * O_inlet[1]),
             (tan(atan(k_outlet) + g_d_outlet), -1,
-             -sqrt(tan(atan(k_outlet) + g_d_outlet) ** 2 + 1) * self.relative_outlet_radius -
+             -sqrt(tan(atan(k_outlet) + g_d_outlet) ** 2 + 1) * relative_outlet_radius -
              (tan(atan(k_outlet) + g_d_outlet)) * O_outlet[0] - (-1) * O_outlet[1]))
 
         # точки пересечения окружностей со спинкой и корытом
         xclc_i_u, yclc_i_u = coordinate_intersection_lines(
             (tan(atan(k_inlet) + g_u_inlet), -1,
-             sqrt(tan(atan(k_inlet) + g_u_inlet) ** 2 + 1) * self.relative_inlet_radius
+             sqrt(tan(atan(k_inlet) + g_u_inlet) ** 2 + 1) * relative_inlet_radius
              - (tan(atan(k_inlet) + g_u_inlet)) * O_inlet[0] - (-1) * O_inlet[1]),
             (-1 / (tan(atan(k_inlet) + g_u_inlet)), -1,
              -(-1 / tan(atan(k_inlet) + g_u_inlet)) * O_inlet[0] - (-1) * O_inlet[1]))
 
         xclc_i_d, yclc_i_d = coordinate_intersection_lines(
             (tan(atan(k_inlet) - g_d_inlet), -1,
-             -sqrt(tan(atan(k_inlet) - g_d_inlet) ** 2 + 1) * self.relative_inlet_radius
+             -sqrt(tan(atan(k_inlet) - g_d_inlet) ** 2 + 1) * relative_inlet_radius
              - (tan(atan(k_inlet) - g_d_inlet)) * O_inlet[0] - (-1) * O_inlet[1]),
             (-1 / (tan(atan(k_inlet) - g_d_inlet)), -1,
              -(-1 / tan(atan(k_inlet) - g_d_inlet)) * O_inlet[0] - (-1) * O_inlet[1]))
 
         xclc_e_u, yclc_e_u = coordinate_intersection_lines(
             (tan(atan(k_outlet) - g_u_outlet), -1,
-             sqrt(tan(atan(k_outlet) - g_u_outlet) ** 2 + 1) * self.relative_outlet_radius
+             sqrt(tan(atan(k_outlet) - g_u_outlet) ** 2 + 1) * relative_outlet_radius
              - tan(atan(k_outlet) - g_u_outlet) * O_outlet[0] - (-1) * O_outlet[1]),
             (-1 / tan(atan(k_outlet) - g_u_outlet), -1,
              -(-1 / tan(atan(k_outlet) - g_u_outlet)) * O_outlet[0] - (-1) * O_outlet[1]))
 
         xclc_e_d, yclc_e_d = coordinate_intersection_lines(
             (tan(atan(k_outlet) + g_d_outlet), -1,
-             -sqrt(tan(atan(k_outlet) + g_d_outlet) ** 2 + 1) * self.relative_outlet_radius
+             -sqrt(tan(atan(k_outlet) + g_d_outlet) ** 2 + 1) * relative_outlet_radius
              - tan(atan(k_outlet) + g_d_outlet) * O_outlet[0] - (-1) * O_outlet[1]),
             (-1 / tan(atan(k_outlet) + g_d_outlet), -1,
              -(-1 / tan(atan(k_outlet) + g_d_outlet)) * O_outlet[0] - (-1) * O_outlet[1]))
@@ -675,13 +682,13 @@ class Foil:
         if not isnan(an):  # при не нулевом радиусе окружности
             if O_outlet[0] > xclc_e_u: an = pi - an
             # уменьшение угла для предотвращения дублирования координат
-            angles = linspace(0, an * 0.99, self.__discreteness, endpoint=False)
-            x += (1 - self.relative_outlet_radius * (1 - cos(angles))).tolist()
-            y += (O_outlet[1] + self.relative_outlet_radius * sin(angles)).tolist()
+            angles = linspace(0, an * 0.99, discreteness, endpoint=False)
+            x += (1 - relative_outlet_radius * (1 - cos(angles))).tolist()
+            y += (O_outlet[1] + relative_outlet_radius * sin(angles)).tolist()
 
         # спинка
         xu, yu = bernstein_curve(((xclc_e_u, yclc_e_u), (xcl_u, ycl_u), (xclc_i_u, yclc_i_u)),
-                                 N=self.__discreteness).T.tolist()
+                                 N=discreteness).T.tolist()
         x += xu
         y += yu
 
@@ -690,9 +697,9 @@ class Foil:
         if not isnan(an):  # при не нулевом радиусе окружности
             if xclc_i_u > O_inlet[0]: an = pi - an
             # уменьшение угла для предотвращения дублирования координат
-            angles = linspace(0, an * 0.99, self.__discreteness, endpoint=False)
-            x += (self.relative_inlet_radius * (1 - cos(angles))).tolist()[::-1]
-            y += (O_inlet[1] + self.relative_inlet_radius * sin(angles)).tolist()[::-1]
+            angles = linspace(0, an * 0.99, discreteness, endpoint=False)
+            x += (relative_inlet_radius * (1 - cos(angles))).tolist()[::-1]
+            y += (O_inlet[1] + relative_inlet_radius * sin(angles)).tolist()[::-1]
 
         x.pop(), y.pop()  # удаление дубликата входной точки
 
@@ -701,13 +708,13 @@ class Foil:
         if not isnan(an):  # при не нулевом радиусе окружности
             if xclc_i_d > O_inlet[0]: an = pi - an
             # уменьшение угла для предотвращения дублирования координат
-            angles = linspace(0, an * 0.99, self.discreteness, endpoint=False)
-            x += (self.relative_inlet_radius * (1 - cos(angles))).tolist()
-            y += (O_inlet[1] - self.relative_inlet_radius * sin(angles)).tolist()
+            angles = linspace(0, an * 0.99, discreteness, endpoint=False)
+            x += (relative_inlet_radius * (1 - cos(angles))).tolist()
+            y += (O_inlet[1] - relative_inlet_radius * sin(angles)).tolist()
 
         # корыто
         xd, yd = bernstein_curve(((xclc_i_d, yclc_i_d), (xcl_d, ycl_d), (xclc_e_d, yclc_e_d)),
-                                 N=self.__discreteness).T.tolist()
+                                 N=discreteness).T.tolist()
         x += xd
         y += yd
 
@@ -716,21 +723,23 @@ class Foil:
         if not isnan(an):  # при не нулевом радиусе окружности
             if O_outlet[0] > xclc_e_d: an = pi - an
             # уменьшение угла для предотвращения дублирования координат
-            angles = linspace(0, an * 0.99, self.__discreteness, endpoint=False)
-            x += (1 - self.relative_outlet_radius * (1 - cos(angles))).tolist()[::-1]
-            y += (O_outlet[1] - self.relative_outlet_radius * sin(angles)).tolist()[::-1]
+            angles = linspace(0, an * 0.99, discreteness, endpoint=False)
+            x += (1 - relative_outlet_radius * (1 - cos(angles))).tolist()[::-1]
+            y += (O_outlet[1] - relative_outlet_radius * sin(angles)).tolist()[::-1]
 
         return tuple(((x, y) for x, y in zip(x, y)))
 
-    def __mynk(self) -> tuple[tuple[float, float], ...]:
+    def __mynk(self, discreteness: int, **kwargs) -> tuple[tuple[float, float], ...]:
+
+        mynk_coefficient = kwargs['mynk_coefficient']
 
         def mynk_coordinates(param: float, x) -> tuple:
             """Координата y спинки и корыта"""
             part1, part2 = 0.25 * (-x - 17 * x ** 2 - 6 * x ** 3), x ** 0.87 * (1 - x) ** 0.56
             return param * (part1 + part2), param * (part1 - part2)
 
-        x = linspace(0, 1, self.__discreteness, endpoint=True)
-        yu, yl = mynk_coordinates(self.mynk_coefficient, x)
+        x = linspace(0, 1, discreteness, endpoint=True)
+        yu, yl = mynk_coordinates(mynk_coefficient, x)
         idx = np.argmax(yu)
         angle = atan((yu[-1] - yu[0]) / (x[-1] - x[0]))
 
@@ -912,19 +921,19 @@ class Foil:
     def __fit(self) -> tuple[tuple[float, float], ...]:
         self.validate()
 
-        if self.method in Foil.__METHODS['NACA']['aliases']:
-            self.__coordinates0 = self.__naca()
-        elif self.method in Foil.__METHODS['BMSTU']['aliases']:
-            self.__coordinates0 = self.__bmstu()
-        elif self.method in Foil.__METHODS['MYNK']['aliases']:
-            self.__coordinates0 = self.__mynk()
-        elif self.method in Foil.__METHODS['PARSEC']['aliases']:
+        if self.method == 'NACA':
+            self.__coordinates0 = self.__naca(self.discreteness, **self.parameters)
+        elif self.method == 'BMSTU':
+            self.__coordinates0 = self.__bmstu(self.discreteness, **self.parameters)
+        elif self.method == 'MYNK':
+            self.__coordinates0 = self.__mynk(self.discreteness, **self.parameters)
+        elif self.method == 'PARSEC':
             self.__coordinates0 = self.__parsec()
-        elif self.method in Foil.__METHODS['BEZIER']['aliases']:
+        elif self.method == 'BEZIER':
             self.__coordinates0 = self.__bezier()
-        elif self.method in Foil.__METHODS['MANUAL']['aliases']:
+        elif self.method == 'MANUAL':
             self.__coordinates0 = self.__manual()
-        elif self.method in Foil.__METHODS['CIRCLE']['aliases']:
+        elif self.method == 'CIRCLE':
             self.__coordinates0 = self.__circle()
         else:
             print(Fore.RED + f'No such method {self.method}! Use Airfoil.help' + Fore.RESET)
@@ -936,7 +945,8 @@ class Foil:
         self.__coordinates = self.transform(self.__coordinates, x0=x_min, scale=(1 / self.__chord))  # нормализация
         return self.__coordinates
 
-    def transform(self, coordinates: tuple[tuple[float, float], ...],
+    @staticmethod
+    def transform(coordinates: tuple[tuple[float, float], ...],
                   x0=0.0, y0=0.0, angle=0.0, scale=1.0) -> tuple[tuple[float, float], ...]:
         """Перенос-поворот-масштабирование кривых спинки и корыта профиля"""
         new_coordinates = list()
@@ -1296,7 +1306,7 @@ def test() -> None:
         foils.append(Foil('CIRCLE', 60, 0.5, radians(30), name='CIRCLE',
                           **parameters))
 
-    if 'Load' != '':
+    if 'Load' == '':
         foil = Foil('NACA', 40, 1, radians(20),
                     relative_thickness=0.1, x_relative_camber=0.3, relative_camber=0, closed=True)
         foil = Foil.load(foil.transform(foil.coordinates, x0=foil.properties['x0'], y0=foil.properties['y0'], scale=5),
