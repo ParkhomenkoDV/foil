@@ -287,7 +287,6 @@ class Foil:
     """Относительный профиль"""
 
     __RND = 4  # количество значащих цифр
-    __DISCRETENESS = 30  # рекомендуемое количество дискретных точек
     __METHODS = {
         'NACA': {'description': '''Четырёхзначные профиль крыла NACA определяется следующим образом:
 Первая цифра обозначает максимальный прогиб в процентах от хорды.
@@ -336,6 +335,7 @@ class Foil:
                        'rotation_angle': VOCABULARY['rotation_angle'],
                        'x_ray_cross': VOCABULARY['x_ray_cross'],
                        'is_airfoil': VOCABULARY['is_airfoil'], }}, }
+    __DISCRETENESS = 30  # рекомендуемое количество дискретных точек
     __RELATIVE_STEP = 1.0  # дефолтный относительный шаг []
     __INSTALLATION_ANGLE = 0.0  # дефолтный угол установки [рад]
 

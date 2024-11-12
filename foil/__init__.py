@@ -1,2 +1,2 @@
-from .foil import VOCABULARY, Foil
+from .foil import Foil
 
