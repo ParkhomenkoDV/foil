@@ -288,19 +288,18 @@ class Foil:
 
     __RND = 4  # количество значащих цифр
     __DISCRETENESS = 30  # рекомендуемое количество дискретных точек
-    # TODO
     __METHODS = {
-        'NACA': {'description': '''Четырёхзначные секции крыла NACA определяют профиль следующим образом:[2]
+        'NACA': {'description': '''Четырёхзначные профиль крыла NACA определяется следующим образом:
 Первая цифра обозначает максимальный прогиб в процентах от хорды.
 Вторая цифра, описывающая расстояние максимального изгиба от передней кромки аэродинамического профиля в десятых долях хорды.
-Последние две цифры обозначают максимальную толщину аэродинамического профиля в процентах от хорды.[3]''',
+Последние две цифры обозначают максимальную толщину аэродинамического профиля в процентах от хорды.''',
                  'attributes': {
-                     'relative_thickness': VOCABULARY['relative_thickness'],
                      'x_relative_camber': VOCABULARY['x_relative_camber'],
                      'relative_camber': VOCABULARY['relative_camber'],
+                     'relative_thickness': VOCABULARY['relative_thickness'],
                      'closed': VOCABULARY['closed'], }},
         'BMSTU': {
-            'description': '[1, с.110-115]',
+            'description': f'[{REFERENCES[1]}, с.110-115]',
             'attributes': {
                 'rotation_angle': VOCABULARY['rotation_angle'],
                 'relative_inlet_radius': VOCABULARY['relative_inlet_radius'],
@@ -309,7 +308,7 @@ class Foil:
                 'outlet_angle': VOCABULARY['outlet_angle'],
                 'x_ray_cross': VOCABULARY['x_ray_cross'],
                 'upper_proximity': VOCABULARY['upper_proximity']}},
-        'MYNK': {'description': '',
+        'MYNK': {'description': 'профиль Мунка',
                  'attributes': {
                      'mynk_coefficient': VOCABULARY['mynk_coefficient'], }},
         'PARSEC': {'description': '',
@@ -323,15 +322,15 @@ class Foil:
                        'd2y_dx2_lower': VOCABULARY['d2y_dx2_lower'],
                        'theta_outlet_upper': VOCABULARY['theta_outlet_upper'],
                        'theta_outlet_lower': VOCABULARY['theta_outlet_lower'], }},
-        'BEZIER': {'description': '',
+        'BEZIER': {'description': 'профиль, построенный по кривой Безье',
                    'aliases': ('BEZIER', 'БЕЗЬЕ'),
                    'attributes': {
                        'points': VOCABULARY['points'], }},
-        'MANUAL': {'description': '',
+        'MANUAL': {'description': 'профиль, образованный интерполяцией точек спинки и корыта',
                    'attributes': {
                        'points': VOCABULARY['points'],
                        'deg': VOCABULARY['deg'], }},
-        'CIRCLE': {'description': '',
+        'CIRCLE': {'description': 'профиль, образованный интерполяцией точек канала профильной решетки',
                    'attributes': {
                        'relative_circles': VOCABULARY['relative_circles'],
                        'rotation_angle': VOCABULARY['rotation_angle'],
@@ -355,37 +354,8 @@ class Foil:
         assert isinstance(value, int) and 0 <= value
         Foil.__rnd = value
 
-    # TODO
     @classmethod
-    def help(cls):
-        """Помощь при работе с классом Foil и его объектами"""
-        print(Fore.MAGENTA + 'Foil tutorial' + Fore.RESET)
-        print('Foil.rnd = 4  # количество значащих цифр')
-        print('foil.vocabulary  # словарь терминов и атрибутов')
-        print()
-        print('airfoil = Foil(method, discreteness, relative_step, gamma, **attributes)  # создание объекта')
-        print('где:')
-        print('discreteness:  int >= 3      # количество дискретных точек')
-        print('relative_step: int > 0       # относительный шаг')
-        print('gamma:         float < pi/2  # угол установки профиля')
-        print()
-        print('methods:  # методы построения аэродинамического профиля')
-        for method in Foil.__METHODS:
-            print(method)
-            print('\t' + f'description: {Foil.__METHODS[method]["description"]}')
-            print('\t' + f'attributes:')
-            for attribute in Foil.__METHODS[method]["attributes"]:
-                print('\t\t' + Fore.CYAN + f'{attribute}' + Fore.RESET)
-                for key, value in Foil.__METHODS[method]["attributes"][attribute].items():
-                    print('\t\t\t' + f'{key}: {value}')
-        print()
-        print('foil.show()')
-        print('foil.properties')
-        print('foil.channel')
-        print('foil.to_dataframe()')
-        print('foil.export()')
-
-    def validate(self, **kwargs) -> None:
+    def validate(cls, **kwargs) -> None:
         """Проверка верности ввода атрибутов профиля"""
 
         for key, value in kwargs.items():
@@ -394,12 +364,12 @@ class Foil:
 
         method, parameters = kwargs.pop('method', None), kwargs.pop('parameters', None)
         if method is not None and parameters is not None:
-            for attr in Foil.__METHODS[method]['attributes']:
+            for attr in cls.__METHODS[method]['attributes']:
                 assert attr in parameters, f'{attr} not in parameters'
-                assert isinstance(parameters[attr], Foil.__METHODS[method]['attributes'][attr]['type']), \
-                    f'type({attr}) not in {Foil.__METHODS[method]["attributes"][attr]["type"]}'
-                for ass in Foil.__METHODS[method]['attributes'][attr]["assert"]:
-                    assert not ass(parameters[attr]), ass(parameters[attr])
+                value = parameters.get(attr, None)
+                assert isinstance(value, cls.__METHODS[method]['attributes'][attr]['type']), \
+                    f'type({attr}) not in {cls.__METHODS[method]["attributes"][attr]["type"]}'
+                for ass in cls.__METHODS[method]['attributes'][attr]["assert"]: assert not ass(value), ass(value)
 
     def __init__(self, method: str, discreteness: int = __DISCRETENESS,
                  relative_step: float | int = __RELATIVE_STEP, installation_angle: float | int = __INSTALLATION_ANGLE,
@@ -532,37 +502,55 @@ class Foil:
         return interpolate.interp1d(*array(lower, dtype='float64').T, kind=kind, fill_value=fill_value)
 
     @classmethod
-    def load(cls, points, discreteness: int = __DISCRETENESS,
+    def load(cls, points, deg: int, discreteness: int = __DISCRETENESS,
              name: str = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())) -> object:
         """Загрузка координат профиля"""
-        assert isinstance(points, VOCABULARY["points"]["type"]), f'type(points) not in {VOCABULARY["points"]["type"]}'
-        for ass in VOCABULARY['points']["assert"]: assert not ass(points), ass(points)
-        assert isinstance(discreteness, VOCABULARY["discreteness"]["type"]), \
-            f'type(discreteness) not in {VOCABULARY["discreteness"]["type"]}'
-        for ass in VOCABULARY['discreteness']["assert"]: assert not ass(discreteness), ass(discreteness)
-
-        upper_lower = Foil.upper_lower(points)
-        return Foil('MANUAL', discreteness, 1, name=name, points=points, deg=1)
+        cls.validate(method='MANUAL', discreteness=discreteness, name=name,
+                     parameters={'points': points, 'deg': deg})
+        return Foil('MANUAL', discreteness, name=name, points=points, deg=deg)
 
     @classmethod
-    def read(cls, path: str) -> object:
+    def read(cls, path: str, header: bool = True) -> object:
         """Считывание координат профиля из файла"""
         assert os.path.isfile(path), f'file "{path}" does not exist'
-        # extension = os.path.
-        points = ((3, 87), (867, 234), (123456, 8))
+        name, extension = os.path.splitext(path)
+        extension = extension.lower()
 
-        return Foil('MANUAL', points=points)
+        if extension == 'pkl':
+            points = pd.read_pickle(path)
+        elif extension in ('txt', 'csv'):
+            points = pd.read_csv(path, header=header)
+        elif extension == 'xlsx':
+            points = pd.read_excel(path, header=header)
+        else:
+            raise Exception(f'extension "{extension}" is not found')
+
+        return Foil('MANUAL', name=name, points=points)
 
     def to_dataframe(self) -> pd.DataFrame:
         """Перевод координат в pandas.DataFrame"""
         return pd.DataFrame(self.coordinates, columns=('x', 'y'))
 
-    def write(self):
+    def write(self, extension: str, index: bool = False, header: bool = True) -> None:
         """Экспортирование координат и характеристик профиля"""
+        assert isinstance(extension, str)
+        extension = extension.strip().lower().replace('.', '')
+
         if not os.path.isdir('datas'): os.mkdir('datas')
         ctime = time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime())
-        self.to_dataframe().to_excel(f'datas/airfoil_coordinates_{ctime}.xlsx', header=True)
-        pd.DataFrame(self.properties, index=[0]).to_excel(f'datas/airfoil_properties_{ctime}.xlsx', header=True)
+        coordinates, properties = self.to_dataframe(), pd.DataFrame(self.properties, index=[0])
+
+        if extension == 'pkl':
+            coordinates.to_pickle(f'datas/foil_coordinates_{ctime}.{extension}', index=index, header=header)
+            properties.to_pickle(f'datas/foil_properties_{ctime}.{extension}', index=index, header=header)
+        elif extension in ('csv', 'txt'):
+            coordinates.to_csv(f'datas/foil_coordinates_{ctime}.{extension}', index=index, header=header)
+            properties.to_csv(f'datas/foil_properties_{ctime}.{extension}', index=index, header=header)
+        elif extension == 'xlsx':
+            coordinates.to_excel(f'datas/foil_coordinates_{ctime}.{extension}', index=index, header=header)
+            properties.to_excel(f'datas/foil_properties_{ctime}.{extension}', index=index, header=header)
+        else:
+            raise Exception(f'extension "{extension}" is not found')
 
     def __naca(self, discreteness: int,
                relative_thickness, x_relative_camber, relative_camber, closed) -> tuple[tuple[float, float], ...]:
@@ -1218,13 +1206,12 @@ class Foil:
                        color=(0, 0, 1, 0.5), density=1.5, minlength=0.1, linewidth=0.8, broken_streamlines=True)
         plt.plot(x, y, color='black', linewidth=2)
         plt.axis('equal')
+        plt.tight_layout()
         plt.show()
 
 
 def test() -> None:
     """Тестирование"""
-
-    Foil.help()
 
     Foil.rnd = 4
     print(f'{Foil.rnd = }')
@@ -1316,11 +1303,11 @@ def test() -> None:
         foils.append(Foil('CIRCLE', 60, 0.5, radians(30), name='CIRCLE',
                           **parameters))
 
-    if 'Load' == '':
+    if 'Load' != '':
         foil = Foil('NACA', 40, 1, radians(20),
                     relative_thickness=0.1, x_relative_camber=0.3, relative_camber=0, closed=True)
-        foil = Foil.load(foil.transform(foil.coordinates, x0=foil.properties['x0'], y0=foil.properties['y0'], scale=5),
-                         name='Load')
+        coordinates = foil.transform(foil.coordinates, x0=foil.properties['x0'], y0=foil.properties['y0'], scale=5)
+        foil = Foil.load(coordinates, deg=1, discreteness=80, name='Load')
         foils.append(foil)
 
     for foil in foils:
@@ -1334,9 +1321,9 @@ def test() -> None:
         print(Fore.MAGENTA + 'foil channel:' + Fore.RESET)
         print(f'{foil.channel}')
 
-        # foil.cfd(10, 5)
+        foil.cfd(10, 5)
 
-        # foil.write()
+        foil.write('csv')
 
 
 if __name__ == '__main__':
