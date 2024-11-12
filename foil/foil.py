@@ -430,6 +430,7 @@ class Foil:
         """Сброс расчетов"""
         self.__coordinates = tuple()  # относительные координаты профиля считая против часовой стрелки с выходной кромки
         self.__x, self.__y = tuple(), tuple()  # относительные координты x и y профиля
+        self.__chord = None  # длина хорды
         self.__properties = dict()  # относительные характеристики профиля
         self.__channel = tuple()  # дифузорность/конфузорность решетки
 
@@ -444,7 +445,8 @@ class Foil:
     @discreteness.setter
     def discreteness(self, value: int) -> None:
         self.validate(discreteness=value)
-        self.__init__(method=self.method, discreteness=value)
+        self.__discreteness = value
+        self.reset()
 
     @property
     def relative_step(self) -> float | int | np.number:
@@ -454,11 +456,14 @@ class Foil:
     def relative_step(self, value):
         self.validate(relative_step=value)
         self.__relative_step = value
+        self.__properties = dict()  # относительные характеристики профиля
         self.__channel = dict()  # дифузорность/конфузорность решетки
 
     @relative_step.deleter
     def relative_step(self):
         self.__relative_step = Foil.__RELATIVE_STEP
+        self.__properties = dict()  # относительные характеристики профиля
+        self.__channel = dict()  # дифузорность/конфузорность решетки
 
     @property
     def installation_angle(self) -> float | int | np.number:
@@ -467,11 +472,13 @@ class Foil:
     @installation_angle.setter
     def installation_angle(self, value):
         self.validate(installation_angle=value)
-        self.__init__(method=self.method, installation_angle=value)
+        self.__installation_angle = value
+        self.reset()
 
     @installation_angle.deleter
     def installation_angle(self):
         self.__installation_angle = Foil.__INSTALLATION_ANGLE
+        self.reset()
 
     @property
     def name(self) -> str:
@@ -493,7 +500,8 @@ class Foil:
     @parameters.setter
     def parameters(self, value: dict):
         self.validate(method=self.method, parameters=value)
-        # TODO
+        self.__parameters = value
+        self.reset()
 
     @property
     def coordinates(self) -> tuple[tuple[float, float], ...]:
@@ -553,12 +561,8 @@ class Foil:
         self.to_dataframe().to_excel(f'datas/airfoil_coordinates_{ctime}.xlsx', header=True)
         pd.DataFrame(self.properties, index=[0]).to_excel(f'datas/airfoil_properties_{ctime}.xlsx', header=True)
 
-    def __naca(self, discreteness: int, **kwargs) -> tuple[tuple[float, float], ...]:
-
-        x_relative_camber = kwargs['x_relative_camber']
-        relative_camber = kwargs['relative_camber']
-        relative_thickness = kwargs['relative_thickness']
-        closed = kwargs['closed']
+    def __naca(self, discreteness: int,
+               relative_thickness, x_relative_camber, relative_camber, closed) -> tuple[tuple[float, float], ...]:
 
         i = arange(discreteness)  # массив индексов
         betta = i * pi / (2 * (discreteness - 1))
@@ -588,14 +592,11 @@ class Foil:
 
         return self.transform(tuple(((x, y) for x, y in zip(X, Y))), x0=X.min(), scale=(1 / scale))
 
-    def __bmstu(self, discreteness: int, **kwargs) -> tuple[tuple[float, float], ...]:
-
-        rotation_angle = kwargs['rotation_angle']
-        x_ray_cross = kwargs['x_ray_cross']
-        upper_proximity = kwargs['upper_proximity']
-        inlet_angle, outlet_angle = kwargs['inlet_angle'], kwargs['outlet_angle']
-        relative_inlet_radius = kwargs['relative_inlet_radius']
-        relative_outlet_radius = kwargs['relative_outlet_radius']
+    def __bmstu(self, discreteness: int,
+                rotation_angle,
+                relative_inlet_radius, relative_outlet_radius,
+                inlet_angle, outlet_angle, x_ray_cross,
+                upper_proximity) -> tuple[tuple[float, float], ...]:
 
         airfoil_rotation_angle = pi - rotation_angle  # угол поворота профиля
 
@@ -729,9 +730,8 @@ class Foil:
 
         return tuple(((x, y) for x, y in zip(x, y)))
 
-    def __mynk(self, discreteness: int, **kwargs) -> tuple[tuple[float, float], ...]:
-
-        mynk_coefficient = kwargs['mynk_coefficient']
+    def __mynk(self, discreteness: int,
+               mynk_coefficient) -> tuple[tuple[float, float], ...]:
 
         def mynk_coordinates(param: float, x) -> tuple:
             """Координата y спинки и корыта"""
@@ -749,7 +749,12 @@ class Foil:
         x, _ = array(coordinates).T
         return self.transform(coordinates, x0=x.min(), scale=(1 / (x.max() - x.min())))  # нормализация
 
-    def __parsec(self) -> tuple[tuple[float, float], ...]:
+    def __parsec(self, discreteness: int,
+                 relative_inlet_radius,
+                 x_relative_camber_upper, x_relative_camber_lower,
+                 relative_camber_upper, relative_camber_lower,
+                 d2y_dx2_upper, d2y_dx2_lower,
+                 theta_outlet_upper, theta_outlet_lower) -> tuple[tuple[float, float], ...]:
         """
         Generate and plot the contour of an airfoil using the PARSEC parameterization
         H. Sobieczky, *'Parametric airfoils and wings'* in *Notes on Numerical Fluid Mechanics*, Vol. 68, pp 71-88]
@@ -794,21 +799,22 @@ class Foil:
             return coefs
 
         # поверхностные коэффициенты давления спинки и корыта
-        coefs_u = parsec_coefficients('u', self.relative_inlet_radius,
-                                      (self.x_relative_camber_upper, self.relative_camber_upper), self.d2y_dx2_upper,
-                                      (1, 0), self.theta_outlet_upper)
-        coefs_l = parsec_coefficients('l', self.relative_inlet_radius,
-                                      (self.x_relative_camber_lower, self.relative_camber_lower), self.d2y_dx2_lower,
-                                      (1, 0), self.theta_outlet_lower)
+        coefs_u = parsec_coefficients('u', relative_inlet_radius,
+                                      (x_relative_camber_upper, relative_camber_upper), d2y_dx2_upper,
+                                      (1, 0), theta_outlet_upper)
+        coefs_l = parsec_coefficients('l', relative_inlet_radius,
+                                      (x_relative_camber_lower, relative_camber_lower), d2y_dx2_lower,
+                                      (1, 0), theta_outlet_lower)
 
-        x = linspace(0, 1, self.__discreteness, endpoint=True)
+        x = linspace(0, 1, discreteness, endpoint=True)
 
         X, Y = np.hstack((x[::-1], x[1::])), np.hstack((sum([coefs_u[i] * x ** (i + 0.5) for i in range(6)])[::-1],
                                                         sum([coefs_l[i] * x ** (i + 0.5) for i in range(6)])[1::]))
         return tuple((x, y) for x, y in zip(X, Y))
 
-    def __bezier(self) -> tuple[tuple[float, float], ...]:
-        X, Y = bernstein_curve(self.points, N=self.__discreteness).T
+    def __bezier(self, discreteness: int,
+                 points) -> tuple[tuple[float, float], ...]:
+        X, Y = bernstein_curve(points, N=discreteness).T
         xargmin, xargmax = np.argmin(X), np.argmax(X)
         angle = atan((Y[xargmax] - Y[xargmin]) / (X[xargmax] - X[xargmin]))  # угол поворота
         coordinates = self.transform(tuple(((x, y) for x, y in zip(X, Y))), angle=angle)  # поворот
@@ -816,8 +822,9 @@ class Foil:
         coordinates = self.transform(coordinates, x0=x.min(), y0=y[0], scale=(1 / (x.max() - x.min())))  # нормализация
         return coordinates
 
-    def __manual(self) -> tuple[tuple[float, float], ...]:
-        coordinates = array(self.points, dtype='float64')
+    def __manual(self, discreteness: int,
+                 points, deg) -> tuple[tuple[float, float], ...]:
+        coordinates = array(points, dtype='float64')
         for _ in range(3):  # для однозначности поворота
             X, Y = array(coordinates, dtype='float64').T
             xargmin, xargmax = np.argmin(X), np.argmax(X)
@@ -829,14 +836,14 @@ class Foil:
 
         upper_lower = self.upper_lower(coordinates)
         (xu, yu), (xl, yl) = array(upper_lower['upper']).T, array(upper_lower['lower']).T
-        fu = interpolate.interp1d(xu, yu, kind=self.deg, fill_value='extrapolate')
-        fl = interpolate.interp1d(xl, yl, kind=self.deg, fill_value='extrapolate')
+        fu = interpolate.interp1d(xu, yu, kind=deg, fill_value='extrapolate')
+        fl = interpolate.interp1d(xl, yl, kind=deg, fill_value='extrapolate')
         epsrel = 0.000_1
         limit = int(ceil(1 / epsrel))  # предел дискретизации точек интегрирования
         coordinates = list()
         for f, is_upper in zip((fu, fl), (True, False)):
             l = integrate.quad(lambda x: sqrt(1 + derivative(f, x) ** 2), 0, 1, epsrel=epsrel, limit=limit)[0]
-            step = l / self.__discreteness
+            step = l / discreteness
             x = [0]
             while True:  # увеличение дискретизации
                 X = x[-1] + step * tan2cos(derivative(f, x[-1]))
@@ -850,23 +857,24 @@ class Foil:
 
         return tuple(coordinates)
 
-    def __circle(self) -> tuple[tuple[float, float], ...]:
+    def __circle(self, discreteness: int,
+                 relative_circles, rotation_angle, x_ray_cross, is_airfoil) -> tuple[tuple[float, float], ...]:
 
         y_ray_cross = fsolve(lambda y:
-                             atan(self.x_ray_cross / y) + atan((1 - self.x_ray_cross) / y) - pi + self.rotation_angle,
+                             atan(x_ray_cross / y) + atan((1 - x_ray_cross) / y) - pi + rotation_angle,
                              array(0.5, dtype='float64'))[0]
 
         # точки безье средней линии, на которые будут накладываться окружности
-        x_av, y_av = bernstein_curve(((0, 0), (self.x_ray_cross, y_ray_cross), (1, 0)), N=self.__discreteness).T
+        x_av, y_av = bernstein_curve(((0, 0), (x_ray_cross, y_ray_cross), (1, 0)), N=discreteness).T
         f_av = interpolate.interp1d(x_av, y_av, kind=3, fill_value='extrapolate')  # функция средней линии
 
         # длина кривой центров окружностей
         l = integrate.quad(lambda x: sqrt(1 + derivative(f_av, x) ** 2), 0, 1, epsrel=0.000_1)[0]
-        step = l / self.__discreteness  # шаг по кривой центров окружностей
+        step = l / discreteness  # шаг по кривой центров окружностей
 
-        xc, dc = array(self.relative_circles, dtype='float64').T
+        xc, dc = array(relative_circles, dtype='float64').T
 
-        if self.is_airfoil:
+        if is_airfoil:
             xc = np.insert(xc, 0, 0)  # профиль в отличие от канала должен быть замкнутым с концов
             dc = np.insert(dc, 0, 0)  # а для канала в точках х 0 и 1 неизвестны окружности
             xc = np.append(xc, 1)
@@ -904,12 +912,12 @@ class Foil:
         upper_mask, lower_mask = (0 < xu) & (xu < 1), (0 < xl) & (xl < 1)  # маска принадлежности к интервалу (0, 1)
         xu, yu, xl, yl = xu[upper_mask], yu[upper_mask], xl[lower_mask], yl[lower_mask]
 
-        if not self.is_airfoil:
+        if not is_airfoil:
             yu -= self.relative_step  # перенос спинки вниз
             yu, yl, xu, xl = yl, yu, xl, xu  # правильное обозначение
 
         X = np.hstack([[1], xu[::-1], [0], xl, [1]])
-        Y = np.hstack([[0], yu[::-1], [0], yl, [0]]) if self.is_airfoil \
+        Y = np.hstack([[0], yu[::-1], [0], yl, [0]]) if is_airfoil \
             else np.hstack([[- self.relative_step / 2],
                             yu[::-1],
                             [- self.relative_step / 2],
@@ -919,8 +927,7 @@ class Foil:
         return tuple((x, y) for x, y in zip(X, Y))
 
     def __fit(self) -> tuple[tuple[float, float], ...]:
-        self.validate()
-
+        """Профилирование"""
         if self.method == 'NACA':
             self.__coordinates0 = self.__naca(self.discreteness, **self.parameters)
         elif self.method == 'BMSTU':
@@ -928,13 +935,13 @@ class Foil:
         elif self.method == 'MYNK':
             self.__coordinates0 = self.__mynk(self.discreteness, **self.parameters)
         elif self.method == 'PARSEC':
-            self.__coordinates0 = self.__parsec()
+            self.__coordinates0 = self.__parsec(self.discreteness, **self.parameters)
         elif self.method == 'BEZIER':
-            self.__coordinates0 = self.__bezier()
+            self.__coordinates0 = self.__bezier(self.discreteness, **self.parameters)
         elif self.method == 'MANUAL':
-            self.__coordinates0 = self.__manual()
+            self.__coordinates0 = self.__manual(self.discreteness, **self.parameters)
         elif self.method == 'CIRCLE':
-            self.__coordinates0 = self.__circle()
+            self.__coordinates0 = self.__circle(self.discreteness, **self.parameters)
         else:
             print(Fore.RED + f'No such method {self.method}! Use Airfoil.help' + Fore.RESET)
 
