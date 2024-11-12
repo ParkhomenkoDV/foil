@@ -346,6 +346,11 @@ class Foil:
                  '__coordinates0', '__coordinates', '__x', '__y', '__chord', '__properties', '__channel')
 
     @property
+    def methods(self):
+        return Foil.__METHODS
+
+
+    @property
     def rnd(self) -> int:
         return Foil.__RND
 
