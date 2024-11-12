@@ -290,14 +290,17 @@ class Foil:
     __DISCRETENESS = 30  # рекомендуемое количество дискретных точек
     # TODO
     __METHODS = {
-        'NACA': {'description': '',
+        'NACA': {'description': '''Четырёхзначные секции крыла NACA определяют профиль следующим образом:[2]
+Первая цифра обозначает максимальный прогиб в процентах от хорды.
+Вторая цифра, описывающая расстояние максимального изгиба от передней кромки аэродинамического профиля в десятых долях хорды.
+Последние две цифры обозначают максимальную толщину аэродинамического профиля в процентах от хорды.[3]''',
                  'attributes': {
                      'relative_thickness': VOCABULARY['relative_thickness'],
                      'x_relative_camber': VOCABULARY['x_relative_camber'],
                      'relative_camber': VOCABULARY['relative_camber'],
                      'closed': VOCABULARY['closed'], }},
         'BMSTU': {
-            'description': '',
+            'description': '[1, с.110-115]',
             'attributes': {
                 'rotation_angle': VOCABULARY['rotation_angle'],
                 'relative_inlet_radius': VOCABULARY['relative_inlet_radius'],
