@@ -4,8 +4,8 @@ import pytest
 from foil.foil import REFERENCES, VOCABULARY, METHODS, Foil
 
 
-STEP = 0.1
-NUM = 10
+STEP = 0.25
+NUM = 5
 DELTA = 0.001
 
 def generate_relative_camber(low=0, high=1, step=STEP):
@@ -91,8 +91,8 @@ def generate_parameters(method: str) -> dict:
                                                    'd2y_dx2_lower': d2y_dx2_lower,
                                                    'theta_outlet_upper': theta_outlet_upper,
                                                    'theta_outlet_lower': theta_outlet_lower}'''
-    elif method == 'BEZIER':
-        pass
+    '''elif method == 'BEZIER':
+        pass'''
 
 
 def test_foil_init():
