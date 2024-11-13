@@ -1,2 +1,2 @@
-from .foil import Foil
+from .foil import REFERENCES, VOCABULARY, METHODS, Foil
 

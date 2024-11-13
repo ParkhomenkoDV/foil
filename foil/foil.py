@@ -282,103 +282,90 @@ VOCABULARY = MappingProxyType({
         'assert': tuple(), },
 })
 
+# методы и параметры профилирования профиля
+METHODS = MappingProxyType({
+    'NACA': {'description': '''Четырёхзначные профиль крыла NACA определяется следующим образом:
+Первая цифра обозначает максимальный прогиб в процентах от хорды.
+Вторая цифра, описывающая расстояние максимального изгиба от передней кромки аэродинамического профиля в десятых долях хорды.
+Последние две цифры обозначают максимальную толщину аэродинамического профиля в процентах от хорды.''',
+             'attributes': {
+                 'relative_camber': VOCABULARY['relative_camber'],
+                 'x_relative_camber': VOCABULARY['x_relative_camber'],
+                 'relative_thickness': VOCABULARY['relative_thickness'],
+                 'closed': VOCABULARY['closed'], }},
+    'BMSTU': {
+        'description': f'[{REFERENCES[1]}, с.110-115]',
+        'attributes': {
+            'rotation_angle': VOCABULARY['rotation_angle'],
+            'relative_inlet_radius': VOCABULARY['relative_inlet_radius'],
+            'relative_outlet_radius': VOCABULARY['relative_outlet_radius'],
+            'inlet_angle': VOCABULARY['inlet_angle'],
+            'outlet_angle': VOCABULARY['outlet_angle'],
+            'x_ray_cross': VOCABULARY['x_ray_cross'],
+            'upper_proximity': VOCABULARY['upper_proximity']}},
+    'MYNK': {'description': 'профиль Мунка',
+             'attributes': {
+                 'mynk_coefficient': VOCABULARY['mynk_coefficient'], }},
+    'PARSEC': {'description': '',
+               'attributes': {
+                   'relative_inlet_radius': VOCABULARY['relative_inlet_radius'],
+                   'x_relative_camber_upper': VOCABULARY['x_relative_camber_upper'],
+                   'x_relative_camber_lower': VOCABULARY['x_relative_camber_lower'],
+                   'relative_camber_upper': VOCABULARY['relative_camber_upper'],
+                   'relative_camber_lower': VOCABULARY['relative_camber_lower'],
+                   'd2y_dx2_upper': VOCABULARY['d2y_dx2_upper'],
+                   'd2y_dx2_lower': VOCABULARY['d2y_dx2_lower'],
+                   'theta_outlet_upper': VOCABULARY['theta_outlet_upper'],
+                   'theta_outlet_lower': VOCABULARY['theta_outlet_lower'], }},
+    'BEZIER': {'description': 'профиль, построенный по кривой Безье',
+               'aliases': ('BEZIER', 'БЕЗЬЕ'),
+               'attributes': {
+                   'points': VOCABULARY['points'], }},
+    'MANUAL': {'description': 'профиль, образованный интерполяцией точек спинки и корыта',
+               'attributes': {
+                   'points': VOCABULARY['points'],
+                   'deg': VOCABULARY['deg'], }},
+    'CIRCLE': {'description': 'профиль, образованный интерполяцией точек канала профильной решетки',
+               'attributes': {
+                   'relative_circles': VOCABULARY['relative_circles'],
+                   'rotation_angle': VOCABULARY['rotation_angle'],
+                   'x_ray_cross': VOCABULARY['x_ray_cross'],
+                   'is_airfoil': VOCABULARY['is_airfoil'], }}, })
+
 
 class Foil:
     """Относительный профиль"""
 
-    __RND = 4  # количество значащих цифр
-    __METHODS = {
-        'NACA': {'description': '''Четырёхзначные профиль крыла NACA определяется следующим образом:
-Первая цифра обозначает максимальный прогиб в процентах от хорды.
-Вторая цифра, описывающая расстояние максимального изгиба от передней кромки аэродинамического профиля в десятых долях хорды.
-Последние две цифры обозначают максимальную толщину аэродинамического профиля в процентах от хорды.''',
-                 'attributes': {
-                     'x_relative_camber': VOCABULARY['x_relative_camber'],
-                     'relative_camber': VOCABULARY['relative_camber'],
-                     'relative_thickness': VOCABULARY['relative_thickness'],
-                     'closed': VOCABULARY['closed'], }},
-        'BMSTU': {
-            'description': f'[{REFERENCES[1]}, с.110-115]',
-            'attributes': {
-                'rotation_angle': VOCABULARY['rotation_angle'],
-                'relative_inlet_radius': VOCABULARY['relative_inlet_radius'],
-                'relative_outlet_radius': VOCABULARY['relative_outlet_radius'],
-                'inlet_angle': VOCABULARY['inlet_angle'],
-                'outlet_angle': VOCABULARY['outlet_angle'],
-                'x_ray_cross': VOCABULARY['x_ray_cross'],
-                'upper_proximity': VOCABULARY['upper_proximity']}},
-        'MYNK': {'description': 'профиль Мунка',
-                 'attributes': {
-                     'mynk_coefficient': VOCABULARY['mynk_coefficient'], }},
-        'PARSEC': {'description': '',
-                   'attributes': {
-                       'relative_inlet_radius': VOCABULARY['relative_inlet_radius'],
-                       'x_relative_camber_upper': VOCABULARY['x_relative_camber_upper'],
-                       'x_relative_camber_lower': VOCABULARY['x_relative_camber_lower'],
-                       'relative_camber_upper': VOCABULARY['relative_camber_upper'],
-                       'relative_camber_lower': VOCABULARY['relative_camber_lower'],
-                       'd2y_dx2_upper': VOCABULARY['d2y_dx2_upper'],
-                       'd2y_dx2_lower': VOCABULARY['d2y_dx2_lower'],
-                       'theta_outlet_upper': VOCABULARY['theta_outlet_upper'],
-                       'theta_outlet_lower': VOCABULARY['theta_outlet_lower'], }},
-        'BEZIER': {'description': 'профиль, построенный по кривой Безье',
-                   'aliases': ('BEZIER', 'БЕЗЬЕ'),
-                   'attributes': {
-                       'points': VOCABULARY['points'], }},
-        'MANUAL': {'description': 'профиль, образованный интерполяцией точек спинки и корыта',
-                   'attributes': {
-                       'points': VOCABULARY['points'],
-                       'deg': VOCABULARY['deg'], }},
-        'CIRCLE': {'description': 'профиль, образованный интерполяцией точек канала профильной решетки',
-                   'attributes': {
-                       'relative_circles': VOCABULARY['relative_circles'],
-                       'rotation_angle': VOCABULARY['rotation_angle'],
-                       'x_ray_cross': VOCABULARY['x_ray_cross'],
-                       'is_airfoil': VOCABULARY['is_airfoil'], }}, }
-    __DISCRETENESS = 30  # рекомендуемое количество дискретных точек
+    __DISCRETENESS = 30  # дефолтное рекомендуемое количество дискретных точек []
     __RELATIVE_STEP = 1.0  # дефолтный относительный шаг []
     __INSTALLATION_ANGLE = 0.0  # дефолтный угол установки [рад]
 
-    __slots__ = ('__method',  # необходимый параметр
-                 '__discreteness',
-                 '__relative_step', '__installation_angle',
-                 '__name', '__parameters',
+    __slots__ = ('__method',  # обязательный параметр
+                 '__discreteness', '__relative_step', '__installation_angle', '__name',  # необязательные параметры
+                 '__parameters',  # псевдо необязательный параметр
                  '__coordinates0', '__coordinates', '__x', '__y', '__chord', '__properties', '__channel')
-
-    @property
-    def methods(self):
-        return Foil.__METHODS
-
-    @property
-    def rnd(self) -> int:
-        return Foil.__RND
-
-    @rnd.setter
-    def rnd(self, value) -> None:
-        assert isinstance(value, int) and 0 <= value
-        Foil.__rnd = value
 
     @classmethod
     def validate(cls, **kwargs) -> None:
         """Проверка верности ввода атрибутов профиля"""
 
         for key, value in kwargs.items():
-            assert isinstance(value, VOCABULARY[key]['type'])
+            assert isinstance(value, VOCABULARY[key]['type']), f'type({key}) not in {VOCABULARY[key]["type"]}'
             for ass in VOCABULARY[key]['assert']: assert not ass(value), ass(value)
 
         method, parameters = kwargs.pop('method', None), kwargs.pop('parameters', None)
         if method is not None and parameters is not None:
             for parameter, value in parameters.items():
-                assert parameter in cls.__METHODS[method]['attributes'], \
-                    f'{parameter} not in {cls.__METHODS[method]["attributes"]}'
-                assert isinstance(value, cls.__METHODS[method]['attributes'][parameter]['type']), \
-                    f'type({parameter}) not in {cls.__METHODS[method]["attributes"][parameter]["type"]}'
-                for ass in cls.__METHODS[method]['attributes'][parameter]["assert"]: assert not ass(value), ass(value)
+                assert parameter in METHODS[method]['attributes'], \
+                    f'{parameter} not in {METHODS[method]["attributes"]}'
+                assert isinstance(value, METHODS[method]['attributes'][parameter]['type']), \
+                    f'type({parameter}) not in {METHODS[method]["attributes"][parameter]["type"]}'
+                for ass in METHODS[method]['attributes'][parameter]["assert"]: assert not ass(value), ass(value)
 
     def __init__(self, method: str, discreteness: int = __DISCRETENESS,
                  relative_step: float | int = __RELATIVE_STEP, installation_angle: float | int = __INSTALLATION_ANGLE,
                  name: str = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime()),
-                 **parameters):
+                 **parameters) -> None:
         self.validate(method=method, discreteness=discreteness,
                       relative_step=relative_step, installation_angle=installation_angle,
                       name=name,
@@ -398,7 +385,7 @@ class Foil:
     def __str__(self) -> str:
         return self.__name
 
-    def __setattr__(self, key, value):
+    def __setattr__(self, key, value) -> None:
         """При установке новых атрибутов расчет обнуляется"""
         if not key.startswith('_'): self.reset()
         object.__setattr__(self, key, value)
@@ -423,6 +410,11 @@ class Foil:
     def discreteness(self, value: int) -> None:
         self.validate(discreteness=value)
         self.__discreteness = value
+        self.reset()
+
+    @discreteness.deleter
+    def discreteness(self) -> None:
+        self.__discreteness = Foil.__DISCRETENESS
         self.reset()
 
     @property
@@ -921,6 +913,7 @@ class Foil:
 
         return tuple((x, y) for x, y in zip(X, Y))
 
+    @timeit(6)
     def __fit(self) -> tuple[tuple[float, float], ...]:
         """Профилирование"""
         if self.method == 'NACA':
@@ -974,9 +967,11 @@ class Foil:
         # if upper[-1][0] != 0: upper.append((0, ?)) # неизвестен y входной кромки
         return {'upper': tuple(upper[::-1]), 'lower': tuple(lower)}
 
-    def show(self, amount: int = 2, figsize=(12, 10), savefig=False):
+    def show(self, amount: int = 2, precision: int = 5, figsize=(12, 10), savefig: bool = False):
         """Построение профиля"""
         assert isinstance(amount, int) and 1 <= amount  # количество профилей
+        assert isinstance(precision, int) and 0 <= precision <= 8  # количество значащих цифр
+        assert isinstance(savefig, bool)
 
         X, Y = array(self.coordinates, dtype='float32').T  # запуск расчета
         coordinates0 = self.upper_lower(self.__coordinates0)
@@ -990,19 +985,22 @@ class Foil:
         plt.title('Initial data')
         plt.axis('off')
         plt.plot([], label=f'method = {self.method}')
-        plt.plot([], label=f'discreteness = {self.__discreteness}')
-        plt.plot([], label=f'relative_step = {self.__relative_step:.{Foil.__RND}f} []')
-        plt.plot([],
-                 label=f'gamma = {self.__installation_angle:.{Foil.__RND}f} [rad] = {degrees(self.__installation_angle):.{Foil.__RND}f} [deg]')
-        '''for key, value in self.__dict__.items():
-            if not key.startswith('_') and isinstance(value, (int, float, np.number)):
-                plt.plot([], label=f'{key} = {value:.{Airfoil.__rnd}f}')'''
+        plt.plot([], label=f'discreteness = {self.discreteness}')
+        plt.plot([], label=f'relative_step = {self.relative_step:.{precision}f} []')
+        plt.plot([], label=f'installation_angle'
+                           f' = {self.installation_angle:.{precision}f} [rad]'
+                           f' = {degrees(self.installation_angle):.{precision}f} [deg]')
+        for key, value in self.parameters.items():
+            if isinstance(value, (int, np.integer, bool)):
+                plt.plot([], label=f'{key} = {value}')
+            elif isinstance(value, (float, np.floating)):
+                plt.plot([], label=f'{key} = {value:.{precision}f}')
         plt.legend(loc='upper center')
 
         fg.add_subplot(gs[1, 0])
         plt.title('Properties')
         plt.axis('off')
-        for key, value in self.properties.items(): plt.plot([], label=f'{key} = {value:.{Foil.__RND}f}')
+        for key, value in self.properties.items(): plt.plot([], label=f'{key} = {value:.{precision}f}')
         plt.legend(loc='upper center')
 
         fg.add_subplot(gs[0, 1])
@@ -1016,7 +1014,7 @@ class Foil:
         fg.add_subplot(gs[1, 1])
         plt.title('Channel')
         plt.grid(True)
-        plt.ylim([-self.__relative_step / 2, self.__relative_step / 2])
+        plt.ylim([-self.relative_step / 2, self.relative_step / 2])
         plt.plot(r, d / 2, ls='solid', color='green', label='channel')
         plt.plot(r, -d / 2, ls='solid', color='green')
         plt.plot([0, max(r)], [0, 0], ls='dashdot', color='orange', linewidth=1.5)
@@ -1029,10 +1027,10 @@ class Foil:
         plt.grid(True)
         plt.axis('equal')  # xlim не нужен ввиду эквивалентности
         plt.xlim([0, 1])
-        plt.plot((0, 0), (np.max(Y), np.min(Y) - (amount - 1) * self.__relative_step),
-                 (1, 1), (np.max(Y), np.min(Y) - (amount - 1) * self.__relative_step),
+        plt.plot((0, 0), (np.max(Y), np.min(Y) - (amount - 1) * self.relative_step),
+                 (1, 1), (np.max(Y), np.min(Y) - (amount - 1) * self.relative_step),
                  ls='solid', color='black')  # границы решетки
-        for n in range(amount): plt.plot(X, Y - n * self.__relative_step, ls='solid', color='black', linewidth=2)
+        for n in range(amount): plt.plot(X, Y - n * self.relative_step, ls='solid', color='black', linewidth=2)
         alpha = linspace(0, 2 * pi, 360, dtype='float16')
         for i in range(len(d)):
             plt.plot(list(d[i] / 2 * cos(alpha) + x[i]), list(d[i] / 2 * sin(alpha) + y[i]), ls='solid', color='green')
@@ -1043,7 +1041,6 @@ class Foil:
         plt.show()
 
     @property
-    @timeit()
     def properties(self, epsrel: float = 1e-4) -> dict[str: float]:
         if self.__properties: return self.__properties
 
@@ -1096,7 +1093,6 @@ class Foil:
         return self.__properties
 
     @property
-    @timeit()
     def channel(self) -> np.ndarray:
         """Диффузорность/конфузорность решетки"""
         if len(self.__channel) > 1: return self.__channel
@@ -1104,7 +1100,7 @@ class Foil:
         fu, fl = self.function_upper(3), self.function_lower(3)
 
         Fu = lambda x: fu(x) - self.__relative_step
-        step = self.properties['len_l'] / self.__discreteness  # шаг вдоль кривой
+        step = self.properties['len_l'] / self.discreteness  # шаг вдоль кривой
 
         xgmin, xgmax = 0, 1
 
@@ -1129,16 +1125,6 @@ class Foil:
                     abs(Al * x0 + (-1) * y0 + Cl) / sqrt(Al ** 2 + 1) - r0,  # расстояние от точки окружности
                     ((xl - x0) ** 2 + (Fu(xl) - y0) ** 2) - r0 ** 2]  # до кривой спинки
 
-        if 0:
-            fig = plt.figure()
-            plt.title('channel')
-            plt.axis('equal')
-            x = linspace(0, 1, 1000)
-            plt.plot(x, fu(x))
-            plt.plot(x, fl(x))
-            plt.plot(x, Fu(x))
-            plt.show()
-
         xd, yd, d = list(), list(), list()
 
         warnings.filterwarnings('error')
@@ -1151,7 +1137,7 @@ class Foil:
             if all((xgmin <= res[0] <= xgmax,
                     Fu(res[0]) < res[1] < fl(res[0]),  # y центра окружности лежит в канале
                     xgmin <= res[3] <= xgmax,
-                    res[2] * 2 <= self.__relative_step)):
+                    res[2] * 2 <= self.relative_step)):
                 xd.append(res[0])
                 yd.append(res[1])
                 d.append(res[2] * 2)
@@ -1198,7 +1184,7 @@ class Foil:
             height = y.max() - y.min()
             ylim = (y.min() - padding * height, y.max() + padding * height)
 
-        X, Y = np.meshgrid(linspace(*xlim, self.__discreteness * 2), linspace(*ylim, self.__discreteness ** 2))
+        X, Y = np.meshgrid(linspace(*xlim, self.discreteness * 2), linspace(*ylim, self.discreteness ** 2))
         ux, uy = u((X, Y), vortexs, bounds=(vx, vy))
         '''for i, ux_ in enumerate(ux):
             for j, uy_ in enumerate(uy):
@@ -1208,17 +1194,15 @@ class Foil:
         plt.figure(dpi=150)
         plt.streamplot(X, Y, ux, uy,
                        color=(0, 0, 1, 0.5), density=1.5, minlength=0.1, linewidth=0.8, broken_streamlines=True)
-        plt.plot(x, y, color='black', linewidth=2)
+        plt.plot(x, y, color='black', linewidth=2, label='foil')
         plt.axis('equal')
+        plt.legend(fontsize=12)
         plt.tight_layout()
         plt.show()
 
 
 def test() -> None:
     """Тестирование"""
-
-    Foil.rnd = 4
-    print(f'{Foil.rnd = }')
 
     foils = list()
 
@@ -1327,7 +1311,7 @@ def test() -> None:
 
         foil.cfd(10, 5)
 
-        foil.write('csv')
+        foil.write('txt')
 
 
 if __name__ == '__main__':
