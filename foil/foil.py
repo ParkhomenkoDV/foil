@@ -349,7 +349,6 @@ class Foil:
     def methods(self):
         return Foil.__METHODS
 
-
     @property
     def rnd(self) -> int:
         return Foil.__RND
@@ -369,12 +368,12 @@ class Foil:
 
         method, parameters = kwargs.pop('method', None), kwargs.pop('parameters', None)
         if method is not None and parameters is not None:
-            for attr in cls.__METHODS[method]['attributes']:
-                assert attr in parameters, f'{attr} not in parameters'
-                value = parameters.get(attr, None)
-                assert isinstance(value, cls.__METHODS[method]['attributes'][attr]['type']), \
-                    f'type({attr}) not in {cls.__METHODS[method]["attributes"][attr]["type"]}'
-                for ass in cls.__METHODS[method]['attributes'][attr]["assert"]: assert not ass(value), ass(value)
+            for parameter, value in parameters.items():
+                assert parameter in cls.__METHODS[method]['attributes'], \
+                    f'{parameter} not in {cls.__METHODS[method]["attributes"]}'
+                assert isinstance(value, cls.__METHODS[method]['attributes'][parameter]['type']), \
+                    f'type({parameter}) not in {cls.__METHODS[method]["attributes"][parameter]["type"]}'
+                for ass in cls.__METHODS[method]['attributes'][parameter]["assert"]: assert not ass(value), ass(value)
 
     def __init__(self, method: str, discreteness: int = __DISCRETENESS,
                  relative_step: float | int = __RELATIVE_STEP, installation_angle: float | int = __INSTALLATION_ANGLE,
