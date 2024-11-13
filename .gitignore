@@ -3,3 +3,9 @@ __pycache__/
 
 foil/datas/
 foils/
+
+*.pickle
+*.pkl
+*.txt
+*.csv
+*.xlsx
