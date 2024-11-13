@@ -130,7 +130,7 @@ VOCABULARY = MappingProxyType({
         'description': 'угол поворота потока',
         'unit': '[рад]',
         'type': (int, float, np.number),
-        'assert': (lambda rotation_angle: '' if 0 < rotation_angle <= pi else f'0 < rotation_angle <= {pi}',), },
+        'assert': (lambda rotation_angle: '' if 0 <= rotation_angle <= pi/2 else f'0 <= rotation_angle <= {pi/2}',), },
     'relative_inlet_radius': {
         'description': 'относительный радиус входной кромки',
         'unit': '[]',

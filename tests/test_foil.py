@@ -4,13 +4,14 @@ import pytest
 from foil.foil import REFERENCES, VOCABULARY, METHODS, Foil
 
 
-STEP = 0.05
+STEP = 0.1
 NUM = 10
+DELTA = 0.001
 
 def generate_relative_camber(low=0, high=1, step=STEP):
     for x in np.arange(low, high, step): yield x
 
-def generate_x_relative_camber(low=0.01, high=0.99, num=NUM):
+def generate_x_relative_camber(low=0 +DELTA, high=1-DELTA, num=NUM):
     for x in np.linspace(low, high, num): yield x
 
 def generate_relative_thickness(low=0,high=1, step=STEP):
@@ -19,9 +20,29 @@ def generate_relative_thickness(low=0,high=1, step=STEP):
 def generate_closed():
     for x in (False, True): yield x
 
-def generate_mynk_coefficient(low=0, high=2, step=STEP):
+def generate_rotation_angle(low=0, high=np.pi/2, num=NUM):
+    for x in np.linspace(low, high, num): yield x
+
+def generate_relative_inlet_radius(low=0, high=1, step=STEP):
     for x in np.arange(low, high, step): yield x
 
+def generate_relative_outlet_radius(low=0, high=1, step=STEP):
+    for x in np.arange(low, high, step): yield x
+
+def generate_inlet_angle(low=0, high=np.pi, step=STEP):
+    for x in np.arange(low, high, step): yield x
+
+def generate_outlet_angle(low=0, high=np.pi, step=STEP):
+    for x in np.arange(low, high, step): yield x
+
+def generate_x_ray_cross(low=0+DELTA, high=1-DELTA, num=NUM):
+    for x in np.linspace(low, high, num): yield x
+
+def generate_upper_proximity(low=1, high=1, num=NUM):
+    for x in np.linspace(low, high, num): yield x
+
+def generate_mynk_coefficient(low=0, high=2, step=STEP):
+    for x in np.arange(low, high, step): yield x
 
 def generate_parameters(method: str) -> dict:
     if method == 'NACA':
@@ -33,19 +54,45 @@ def generate_parameters(method: str) -> dict:
                                 'x_relative_camber': x_relative_camber,
                                 'relative_thickness': relative_thickness,
                                 'closed': closed}
-        '''
     elif method == 'BMSTU':
-        for rotation_angle in :
-        for relative_inlet_radius in :
-        for relative_outlet_radius in :
-        for inlet_angle in :
-        for outlet_angle in :
-        for  x_ray_cross in :
-        for upper_proximity in :
-    '''
+        for rotation_angle in generate_rotation_angle():
+            for relative_inlet_radius in generate_relative_inlet_radius():
+                for relative_outlet_radius in generate_relative_outlet_radius():
+                    for inlet_angle in generate_inlet_angle():
+                        for outlet_angle in generate_outlet_angle():
+                            for x_ray_cross in generate_x_ray_cross():
+                                for upper_proximity in generate_upper_proximity():
+                                    yield {'rotation_angle':rotation_angle,
+                                           'relative_inlet_radius': relative_inlet_radius, 
+                                           'relative_outlet_radius': relative_outlet_radius, 
+                                           'inlet_angle': inlet_angle,
+                                           'outlet_angle': outlet_angle,
+                                           'x_ray_cross':x_ray_cross,
+                                           'upper_proximity':upper_proximity}
     elif method == 'MYNK':
         for mynk_coefficient in generate_mynk_coefficient():
             yield {'mynk_coefficient': mynk_coefficient}
+    '''elif method == 'PARSEC':
+        for relative_inlet_radius in generate_relative_inlet_radius():
+            for x_relative_camber_upper in generate_x_relative_camber_upper():
+                for x_relative_camber_lower in generate_x_relative_camber_lower():
+                    for relative_camber_upper in generate_relative_camber_upper():
+                        for relative_camber_lower in generate_relative_camber_lower():
+                            for d2y_dx2_upper in generate_d2y_dx2_upper():
+                                for d2y_dx2_lower in generate_d2y_dx2_lower():
+                                    for theta_outlet_upper in generate_theta_outlet_upper():
+                                        for theta_outlet_lower in generate_theta_outlet_lower():
+                                            yield {'relative_inlet_radius': relative_inlet_radius,
+                                                   'x_relative_camber_upper': x_relative_camber_upper, 
+                                                   'x_relative_camber_lower': x_relative_camber_lower,
+                                                   'relative_camber_upper': relative_camber_upper, 
+                                                   'relative_camber_lower': relative_camber_lower,
+                                                   'd2y_dx2_upper': d2y_dx2_upper,
+                                                   'd2y_dx2_lower': d2y_dx2_lower,
+                                                   'theta_outlet_upper': theta_outlet_upper,
+                                                   'theta_outlet_lower': theta_outlet_lower}'''
+    elif method == 'BEZIER':
+        pass
 
 
 def test_foil_init():
@@ -61,7 +108,9 @@ def test_foil_naca():
         assert Foil(method, **parameters).coordinates
 
 def test_foil_bmstu():
-    pass
+    method = 'BMSTU'
+    for parameters in generate_parameters(method):
+        assert Foil(method, **parameters).coordinates
 
 def test_foil_mynk():
     method = 'MYNK'
