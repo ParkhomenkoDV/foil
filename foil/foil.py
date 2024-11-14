@@ -920,7 +920,6 @@ class Foil:
 
         return tuple((x, y) for x, y in zip(X, Y))
 
-    @timeit(6)
     def __fit(self) -> tuple[tuple[float, float], ...]:
         """Профилирование"""
         if self.method == 'NACA':
