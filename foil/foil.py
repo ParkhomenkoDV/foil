@@ -61,8 +61,8 @@ VOCABULARY = MappingProxyType({
         'description': 'название профиля',
         'unit': '[]',
         'type': (str,),
-        'assert': (lambda name: '' if all(symbol not in name for symbol in ".$#*{}\|/?:><%")
-        else 'all(symbol not in name for symbol in ".$#*{}\|/?:><%"',), },
+        'assert': (lambda name: '' if all(symbol not in name for symbol in r".$#*{}\|/?:><%")
+        else r'all(symbol not in name for symbol in ".$#*{}\|/?:><%"',), },
     'parameters': {
         'description': 'параметры профиля',
         'unit': '[]',
@@ -130,7 +130,8 @@ VOCABULARY = MappingProxyType({
         'description': 'угол поворота потока',
         'unit': '[рад]',
         'type': (int, float, np.number),
-        'assert': (lambda rotation_angle: '' if 0 <= rotation_angle <= pi/2 else f'0 <= rotation_angle <= {pi/2}',), },
+        'assert': (
+            lambda rotation_angle: '' if 0 <= rotation_angle <= pi / 2 else f'0 <= rotation_angle <= {pi / 2}',), },
     'relative_inlet_radius': {
         'description': 'относительный радиус входной кромки',
         'unit': '[]',
@@ -612,6 +613,12 @@ class Foil:
         else:
             g_u_inlet, g_d_inlet = upper_proximity * inlet_angle, (1 - upper_proximity) * inlet_angle,
             g_u_outlet, g_d_outlet = upper_proximity * outlet_angle, (1 - upper_proximity) * outlet_angle
+
+        # ZeroDevisionError
+        if tan(atan(k_inlet) + g_u_inlet) == 0: g_u_inlet += 0.000_000_1
+        if tan(atan(k_inlet) - g_d_inlet) == 0: g_d_inlet -= 0.000_000_1
+        if tan(atan(k_outlet) + g_d_outlet) == 0: g_d_outlet += 0.000_000_1
+        if tan(atan(k_outlet) - g_u_outlet) == 0: g_u_outlet -= 0.000_000_1
 
         # положения центров окружностей входной и выходной кромок
         O_inlet = relative_inlet_radius, k_inlet * relative_inlet_radius
