@@ -822,16 +822,22 @@ class Foil:
         return coordinates
 
     def __manual(self, discreteness: int,
-                 points, deg) -> tuple[tuple[float, float], ...]:
+                 points, deg:int) -> tuple[tuple[float, float], ...]:
         coordinates = array(points, dtype='float64')
+        installation_angle, chord = 0, 1
         for _ in range(3):  # для однозначности поворота
             X, Y = array(coordinates, dtype='float64').T
             xargmin, xargmax = np.argmin(X), np.argmax(X)
             angle = atan((Y[xargmax] - Y[xargmin]) / (X[xargmax] - X[xargmin]))  # угол поворота
+            installation_angle += angle
             coordinates = self.transform(tuple(((x, y) for x, y in zip(X, Y))), angle=angle)  # поворот
         x, y = array(coordinates).T
+        chord = x.max() - x.min()
         coordinates = self.transform(coordinates,
-                                     x0=x.min(), y0=y[np.argmin(x)], scale=(1 / (x.max() - x.min())))  # нормализация
+                                     x0=x.min(), y0=y[np.argmin(x)], scale=(1 / chord))  # нормализация
+
+        self.__installation_angle = installation_angle
+        self.__chord = chord                             
 
         upper_lower = self.upper_lower(coordinates)
         (xu, yu), (xl, yl) = array(upper_lower['upper']).T, array(upper_lower['lower']).T
