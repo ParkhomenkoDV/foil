@@ -964,7 +964,7 @@ class Foil:
         self.__coordinates = self.transform(self.__relative_coordinates, angle=self.__installation_angle)  # поворот
         coordinates = array(self.__coordinates, dtype='float64').T
         x_min, x_max = coordinates[0].min(), coordinates[0].max()
-        self.__chord = abs(x_max - x_min)  # длина хорды
+        if self.__chord is None: self.__chord = abs(x_max - x_min)  # длина хорды
         self.__coordinates = self.transform(self.__coordinates, x0=x_min, scale=(1 / self.__chord))  # нормализация
         return self.__coordinates
 
