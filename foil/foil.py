@@ -479,6 +479,10 @@ class Foil:
         if len(self.__coordinates) == 0: self.__fit()
         return self.__coordinates
 
+    @property
+    def chord(self) -> float:
+        return self.__chord
+
     def xy(self) -> tuple[tuple[float, ...], tuple[float, ...]]:
         """Координаты x и y аэродинамического профиля считая от выходной кромки против часовой стрелки"""
         if 0 < len(self.__x) and 0 < len(self.__y): return self.__x, self.__y

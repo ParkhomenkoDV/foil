@@ -55,7 +55,7 @@ def generate_mynk_coefficient(low=0, high=2, num=NUM, endpoint=True):
     for x in np.linspace(low, high, num, endpoint=endpoint): yield x
 
 
-def generate_parameters(method: str) -> dict:
+def generate_parameters(method: str):
     if method == 'NACA':
         for relative_camber in generate_relative_camber():
             for x_relative_camber in generate_x_relative_camber():
