@@ -840,7 +840,7 @@ class Foil:
             X, Y = array(coordinates, dtype='float64').T
             xargmin, xargmax = np.argmin(X), np.argmax(X)
             angle = atan((Y[xargmax] - Y[xargmin]) / (X[xargmax] - X[xargmin]))  # угол поворота
-            installation_angle -= angle
+            installation_angle -= angle # - т.к. мы идем в сторону уменьшения угла к горизонтали
             coordinates = self.transform(tuple(((x, y) for x, y in zip(X, Y))), angle=angle)  # поворот
         x, y = array(coordinates).T
         chord = x.max() - x.min()
