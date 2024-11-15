@@ -91,6 +91,11 @@ VOCABULARY = MappingProxyType({
                          tuple(sorted(coordinates[np.argmin(array(coordinates).T[0]):],
                                       key=lambda point: point[0], reverse=False))
                    else 'ascending error',), },
+    'relative_coordinates': {
+        'description': 'относительные координаты профиля считая от выходной кромки против часовой стрелки без поворота',
+        'unit': '[]',
+        'type': (tuple, list, np.ndarray),
+        'assert': tuple(), },
     'upper': {
         'description': 'координаты спинки',
         'unit': '[]',
@@ -249,11 +254,11 @@ VOCABULARY = MappingProxyType({
                              for x, y in points)
                    else 'all(isinstance(x, (int, float, np.number)) and isinstance(y, (int, float, np.number)) '
                         'for x, y in points)',
-                   #lambda points: # при загрузке повернутого профиля локальных argmin может быть несколько 
-                   #'' if all(points[i][0] > points[i + 1][0] for i in range(0, np.argmin(array(points).T[0]))) and
+                   # lambda points: # при загрузке повернутого профиля локальных argmin может быть несколько
+                   # '' if all(points[i][0] > points[i + 1][0] for i in range(0, np.argmin(array(points).T[0]))) and
                    #      all(points[i][0] < points[i + 1][0] for i in
                    #          range(np.argmin(array(points).T[0]), len(points) - 1))
-                   #else 'duplicates ascending error',
+                   # else 'duplicates ascending error',
                    ), },
     'deg': {
         'description': 'степень интерполяции полинома',
@@ -345,7 +350,7 @@ class Foil:
     __slots__ = ('__method',  # обязательный параметр
                  '__discreteness', '__relative_step', '__installation_angle', '__name',  # необязательные параметры
                  '__parameters',  # псевдо необязательный параметр
-                 '__coordinates0', '__coordinates', '__x', '__y', '__chord', '__properties', '__channel')
+                 '__relative_coordinates', '__coordinates', '__x', '__y', '__chord', '__properties', '__channel')
 
     @classmethod
     def validate(cls, **kwargs) -> None:
@@ -394,6 +399,7 @@ class Foil:
 
     def reset(self):
         """Сброс расчетов"""
+        self.__relative_coordinates = tuple()  # относительные координаты профиля без поворота
         self.__coordinates = tuple()  # относительные координаты профиля считая против часовой стрелки с выходной кромки
         self.__x, self.__y = tuple(), tuple()  # относительные координты x и y профиля
         self.__chord = None  # длина хорды
@@ -473,6 +479,11 @@ class Foil:
         self.validate(method=self.method, parameters=value)
         self.__parameters = value
         self.reset()
+
+    @property
+    def relative_coordinates(self):
+        if len(self.__relative_coordinates) == 0: self.__fit()
+        return self.__relative_coordinates
 
     @property
     def coordinates(self) -> tuple[tuple[float, float], ...]:
@@ -822,7 +833,7 @@ class Foil:
         return coordinates
 
     def __manual(self, discreteness: int,
-                 points, deg:int) -> tuple[tuple[float, float], ...]:
+                 points, deg: int) -> tuple[tuple[float, float], ...]:
         coordinates = array(points, dtype='float64')
         installation_angle, chord = 0, 1
         for _ in range(3):  # для однозначности поворота
@@ -837,7 +848,7 @@ class Foil:
                                      x0=x.min(), y0=y[np.argmin(x)], scale=(1 / chord))  # нормализация
 
         self.__installation_angle = installation_angle
-        self.__chord = chord                             
+        self.__chord = chord
 
         upper_lower = self.upper_lower(coordinates)
         (xu, yu), (xl, yl) = array(upper_lower['upper']).T, array(upper_lower['lower']).T
@@ -934,23 +945,23 @@ class Foil:
     def __fit(self) -> tuple[tuple[float, float], ...]:
         """Профилирование"""
         if self.method == 'NACA':
-            self.__coordinates0 = self.__naca(self.discreteness, **self.parameters)
+            self.__relative_coordinates = self.__naca(self.discreteness, **self.parameters)
         elif self.method == 'BMSTU':
-            self.__coordinates0 = self.__bmstu(self.discreteness, **self.parameters)
+            self.__relative_coordinates = self.__bmstu(self.discreteness, **self.parameters)
         elif self.method == 'MYNK':
-            self.__coordinates0 = self.__mynk(self.discreteness, **self.parameters)
+            self.__relative_coordinates = self.__mynk(self.discreteness, **self.parameters)
         elif self.method == 'PARSEC':
-            self.__coordinates0 = self.__parsec(self.discreteness, **self.parameters)
+            self.__relative_coordinates = self.__parsec(self.discreteness, **self.parameters)
         elif self.method == 'BEZIER':
-            self.__coordinates0 = self.__bezier(self.discreteness, **self.parameters)
+            self.__relative_coordinates = self.__bezier(self.discreteness, **self.parameters)
         elif self.method == 'MANUAL':
-            self.__coordinates0 = self.__manual(self.discreteness, **self.parameters)
+            self.__relative_coordinates = self.__manual(self.discreteness, **self.parameters)
         elif self.method == 'CIRCLE':
-            self.__coordinates0 = self.__circle(self.discreteness, **self.parameters)
+            self.__relative_coordinates = self.__circle(self.discreteness, **self.parameters)
         else:
             print(Fore.RED + f'No such method {self.method}! Use Airfoil.help' + Fore.RESET)
 
-        self.__coordinates = self.transform(self.__coordinates0, angle=self.__installation_angle)  # поворот
+        self.__coordinates = self.transform(self.__relative_coordinates, angle=self.__installation_angle)  # поворот
         coordinates = array(self.__coordinates, dtype='float64').T
         x_min, x_max = coordinates[0].min(), coordinates[0].max()
         self.__chord = abs(x_max - x_min)  # длина хорды
@@ -991,7 +1002,7 @@ class Foil:
         assert isinstance(savefig, bool)
 
         X, Y = array(self.coordinates, dtype='float32').T  # запуск расчета
-        coordinates0 = self.upper_lower(self.__coordinates0)
+        coordinates0 = self.upper_lower(self.__relative_coordinates)
         x, y, d, r = self.channel.T
 
         fg = plt.figure(figsize=figsize)
