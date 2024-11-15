@@ -249,11 +249,12 @@ VOCABULARY = MappingProxyType({
                              for x, y in points)
                    else 'all(isinstance(x, (int, float, np.number)) and isinstance(y, (int, float, np.number)) '
                         'for x, y in points)',
-                   lambda points:
-                   '' if all(points[i][0] > points[i + 1][0] for i in range(0, np.argmin(array(points).T[0]))) and
-                         all(points[i][0] < points[i + 1][0] for i in
-                             range(np.argmin(array(points).T[0]), len(points) - 1))
-                   else 'duplicates ascending error',), },
+                   #lambda points: # при загрузке повернутого профиля локальных argmin может быть несколько 
+                   #'' if all(points[i][0] > points[i + 1][0] for i in range(0, np.argmin(array(points).T[0]))) and
+                   #      all(points[i][0] < points[i + 1][0] for i in
+                   #          range(np.argmin(array(points).T[0]), len(points) - 1))
+                   #else 'duplicates ascending error',
+                   ), },
     'deg': {
         'description': 'степень интерполяции полинома',
         'unit': '[]',
