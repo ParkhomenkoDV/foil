@@ -1,4 +1,4 @@
-import numpy as np
+from numpy import pi, linspace, random
 import pytest
 
 from foil.foil import REFERENCES, VOCABULARY, METHODS, Foil
@@ -8,51 +8,82 @@ DELTA = 0.000_1
 
 
 def generate_relative_camber(low=0, high=1, num=NUM, endpoint=False):
-    for x in np.linspace(low, high, num, endpoint=endpoint): yield x
+    for x in linspace(low, high, num, endpoint=endpoint): yield x
 
 
 def generate_x_relative_camber(low=0 + DELTA, high=1 - DELTA, num=NUM, endpoint=True):
-    for x in np.linspace(low, high, num, endpoint=endpoint): yield x
+    for x in linspace(low, high, num, endpoint=endpoint): yield x
 
 
 def generate_relative_thickness(low=0, high=1, num=NUM, endpoint=False):
-    for x in np.linspace(low, high, num, endpoint=endpoint): yield x
+    for x in linspace(low, high, num, endpoint=endpoint): yield x
 
 
 def generate_closed():
     for x in (False, True): yield x
 
 
-def generate_rotation_angle(low=0, high=np.pi / 2, num=NUM, endpoint=True):
-    for x in np.linspace(low, high, num, endpoint=endpoint): yield x
+def generate_rotation_angle(low=0, high=pi / 2, num=NUM, endpoint=True):
+    for x in linspace(low, high, num, endpoint=endpoint): yield x
 
 
 def generate_relative_inlet_radius(low=0, high=1, num=NUM, endpoint=False):
-    for x in np.linspace(low, high, num, endpoint=endpoint): yield x
+    for x in linspace(low, high, num, endpoint=endpoint): yield x
 
 
 def generate_relative_outlet_radius(low=0, high=1, num=NUM, endpoint=False):
-    for x in np.linspace(low, high, num, endpoint=endpoint): yield x
+    for x in linspace(low, high, num, endpoint=endpoint): yield x
 
 
-def generate_inlet_angle(low=0, high=np.pi, num=NUM, endpoint=False):
-    for x in np.linspace(low, high, num, endpoint=endpoint): yield x
+def generate_inlet_angle(low=0, high=pi, num=NUM, endpoint=False):
+    for x in linspace(low, high, num, endpoint=endpoint): yield x
 
 
-def generate_outlet_angle(low=0, high=np.pi, num=NUM, endpoint=False):
-    for x in np.linspace(low, high, num, endpoint=endpoint): yield x
+def generate_outlet_angle(low=0, high=pi, num=NUM, endpoint=False):
+    for x in linspace(low, high, num, endpoint=endpoint): yield x
 
 
 def generate_x_ray_cross(low=0 + DELTA, high=1 - DELTA, num=NUM, endpoint=True):
-    for x in np.linspace(low, high, num, endpoint=endpoint): yield x
+    for x in linspace(low, high, num, endpoint=endpoint): yield x
 
 
 def generate_upper_proximity(low=0, high=1, num=NUM, endpoint=True):
-    for x in np.linspace(low, high, num, endpoint=endpoint): yield x
+    for x in linspace(low, high, num, endpoint=endpoint): yield x
 
 
 def generate_mynk_coefficient(low=0, high=2, num=NUM, endpoint=True):
-    for x in np.linspace(low, high, num, endpoint=endpoint): yield x
+    for x in linspace(low, high, num, endpoint=endpoint): yield x
+
+
+def generate_x_relative_camber_upper(low=0+DELTA, high=1, num=NUM, endpoint=False):
+    for x in linspace(low, high, num, endpoint=endpoint): yield x
+
+def generate_x_relative_camber_lower(low=0+DELTA, high=1, num=NUM, endpoint=False):
+    for x in linspace(low, high, num, endpoint=endpoint): yield x
+
+
+def generate_relative_camber_upper(low=-1+DELTA, high=1, num=NUM, endpoint=False):
+    for x in linspace(low, high, num, endpoint=endpoint): yield x
+
+
+def generate_relative_camber_lower(low=-1+DELTA, high=1, num=NUM, endpoint=False):
+    for x in linspace(low, high, num, endpoint=endpoint): yield x
+
+
+def generate_d2y_dx2_upper():
+    for _ in range(NUM): yield random.randint(-10, 10)
+
+
+def generate_d2y_dx2_lower():
+    for _ in range(NUM): yield random.randint(-10, 10)
+
+
+def generate_theta_outlet_upper(low=-pi/2+DELTA, high=pi/2, num=NUM, endpoint=False):
+    for x in linspace(low, high, num, endpoint=endpoint): yield x
+
+
+def generate_theta_outlet_lower(low=-pi/2+DELTA, high=pi/2, num=NUM, endpoint=False):
+    for x in linspace(low, high, num, endpoint=endpoint): yield x
 
 
 def generate_parameters(method: str):
@@ -83,7 +114,7 @@ def generate_parameters(method: str):
     elif method == 'MYNK':
         for mynk_coefficient in generate_mynk_coefficient():
             yield {'mynk_coefficient': mynk_coefficient}
-    '''elif method == 'PARSEC':
+    elif method == 'PARSEC':
         for relative_inlet_radius in generate_relative_inlet_radius():
             for x_relative_camber_upper in generate_x_relative_camber_upper():
                 for x_relative_camber_lower in generate_x_relative_camber_lower():
@@ -101,13 +132,13 @@ def generate_parameters(method: str):
                                                    'd2y_dx2_upper': d2y_dx2_upper,
                                                    'd2y_dx2_lower': d2y_dx2_lower,
                                                    'theta_outlet_upper': theta_outlet_upper,
-                                                   'theta_outlet_lower': theta_outlet_lower}'''
-    '''elif method == 'BEZIER':
-        pass'''
+                                                   'theta_outlet_lower': theta_outlet_lower}
+    elif method == 'BEZIER':
+        pass
 
 
 def test_foil_init():
-    for method in ('NACA', 'MYNK'):  # METHODS
+    for method in ('NACA', 'BMSTU', 'MYNK', 'PARSEC', ):
         for parameters in generate_parameters(method):
             assert Foil(method, **parameters)
             break
@@ -132,7 +163,9 @@ def test_foil_mynk():
 
 
 def test_foil_parsec():
-    pass
+    method = 'PARSEC'
+    for parameters in generate_parameters(method):
+        assert Foil(method, **parameters).coordinates
 
 
 def test_foil_bezier():
