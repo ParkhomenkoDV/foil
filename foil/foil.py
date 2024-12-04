@@ -20,7 +20,7 @@ from mathematics import derivative, Axis
 from mathematics import coordinate_intersection_lines, coefficients_line, angle_between, distance, distance2line
 from mathematics import cot, tan2cos, tan2sin
 
-HERE = os.path.dirname(__file__)
+HERE = os.path.dirname(__file__)  # TODO
 sys.path.append(HERE)
 
 from curves import bernstein_curve
@@ -417,7 +417,7 @@ class Foil:
     @discreteness.setter
     def discreteness(self, value: int) -> None:
         self.validate(discreteness=value)
-        self.__discreteness = value
+        self.__discreteness = int(value)
         self.reset()
 
     @discreteness.deleter
@@ -426,13 +426,13 @@ class Foil:
         self.reset()
 
     @property
-    def relative_step(self) -> float | int | np.number:
+    def relative_step(self) -> float:
         return self.__relative_step
 
     @relative_step.setter
     def relative_step(self, value):
         self.validate(relative_step=value)
-        self.__relative_step = value
+        self.__relative_step = float(value)
         self.__properties = dict()  # относительные характеристики профиля
         self.__channel = dict()  # дифузорность/конфузорность решетки
 
@@ -443,13 +443,13 @@ class Foil:
         self.__channel = dict()  # дифузорность/конфузорность решетки
 
     @property
-    def installation_angle(self) -> float | int | np.number:
+    def installation_angle(self) -> float:
         return self.__installation_angle
 
     @installation_angle.setter
     def installation_angle(self, value):
         self.validate(installation_angle=value)
-        self.__installation_angle = value
+        self.__installation_angle = float(value)
         self.reset()
 
     @installation_angle.deleter
@@ -502,13 +502,13 @@ class Foil:
         self.__x, self.__y = tuple([float(x) for x in X]), tuple([float(y) for y in Y])
         return self.__x, self.__y
 
-    def function_upper(self, kind, fill_value='extrapolate') -> interpolate.interp1d:
+    def function_upper(self, kind: int, fill_value: str = 'extrapolate') -> interpolate.interp1d:
         """Функция спинки аэродинамического профиля"""
         assert isinstance(kind, int) and 1 <= kind <= 3
         upper = self.upper_lower(self.coordinates)['upper']
         return interpolate.interp1d(*array(upper, dtype='float64').T, kind=kind, fill_value=fill_value)
 
-    def function_lower(self, kind, fill_value='extrapolate') -> interpolate.interp1d:
+    def function_lower(self, kind: int, fill_value: str = 'extrapolate') -> interpolate.interp1d:
         """Функция корыта аэродинамического профиля"""
         assert isinstance(kind, int) and 1 <= kind <= 3
         lower = self.upper_lower(self.coordinates)['lower']
@@ -520,7 +520,18 @@ class Foil:
         """Загрузка координат профиля"""
         cls.validate(method='MANUAL', discreteness=discreteness, name=name,
                      parameters={'points': points, 'deg': deg})
-        return Foil('MANUAL', discreteness, name=name, points=points, deg=deg)
+
+        installation_angle = 0  # расчет угла установки
+        coordinates = array(points, dtype='float64')
+        for _ in range(3):  # 3 раза для однозначности поворота
+            X, Y = array(coordinates, dtype='float64').T
+            xargmin, xargmax = np.argmin(X), np.argmax(X)
+            angle = atan((Y[xargmax] - Y[xargmin]) / (X[xargmax] - X[xargmin]))  # угол поворота
+            installation_angle -= angle  # - т.к. мы идем в сторону уменьшения угла к горизонтали
+            coordinates = cls.transform(tuple(((x, y) for x, y in zip(X, Y))), angle=angle)  # поворот
+
+        return Foil('MANUAL', discreteness, installation_angle=installation_angle, name=name,
+                    points=coordinates, deg=deg)
 
     @classmethod
     def read(cls, path: str, header: bool = True) -> object:
@@ -566,7 +577,7 @@ class Foil:
             raise Exception(f'extension "{extension}" is not found')
 
     def __naca(self, discreteness: int,
-               relative_thickness, x_relative_camber, relative_camber, closed) -> tuple[tuple[float, float], ...]:
+               relative_thickness, x_relative_camber, relative_camber, closed: bool) -> tuple[tuple[float, float], ...]:
 
         i = arange(discreteness)  # массив индексов
         betta = i * pi / (2 * (discreteness - 1))
@@ -602,35 +613,35 @@ class Foil:
                 inlet_angle, outlet_angle, x_ray_cross,
                 upper_proximity) -> tuple[tuple[float, float], ...]:
 
-        airfoil_rotation_angle = pi - rotation_angle  # угол поворота профиля
+        foil_rotation_angle = pi - rotation_angle  # угол поворота профиля
 
         # tan угла входа и выхода потока
-        k_inlet = 1 / (2 * x_ray_cross / (x_ray_cross - 1) * tan(airfoil_rotation_angle))
-        k_outlet = 1 / (2 * tan(airfoil_rotation_angle))
-        if tan(airfoil_rotation_angle) * airfoil_rotation_angle > 0:
+        k_inlet = 1 / (2 * x_ray_cross / (x_ray_cross - 1) * tan(foil_rotation_angle))
+        k_outlet = 1 / (2 * tan(foil_rotation_angle))
+        if tan(foil_rotation_angle) * foil_rotation_angle > 0:
             k_inlet *= ((x_ray_cross / (x_ray_cross - 1) - 1) -
                         sqrt((x_ray_cross / (x_ray_cross - 1) - 1) ** 2 -
-                             4 * (x_ray_cross / (x_ray_cross - 1) * tan(airfoil_rotation_angle) ** 2)))
+                             4 * (x_ray_cross / (x_ray_cross - 1) * tan(foil_rotation_angle) ** 2)))
             k_outlet *= ((x_ray_cross / (x_ray_cross - 1) - 1) -
                          sqrt((x_ray_cross / (x_ray_cross - 1) - 1) ** 2 -
-                              4 * (x_ray_cross / (x_ray_cross - 1) * tan(airfoil_rotation_angle) ** 2)))
+                              4 * (x_ray_cross / (x_ray_cross - 1) * tan(foil_rotation_angle) ** 2)))
         else:
             k_inlet *= ((x_ray_cross / (x_ray_cross - 1) - 1) +
                         sqrt((x_ray_cross / (x_ray_cross - 1) - 1) ** 2 -
-                             4 * (x_ray_cross / (x_ray_cross - 1) * tan(airfoil_rotation_angle) ** 2)))
+                             4 * (x_ray_cross / (x_ray_cross - 1) * tan(foil_rotation_angle) ** 2)))
             k_outlet *= ((x_ray_cross / (x_ray_cross - 1) - 1) +
                          sqrt((x_ray_cross / (x_ray_cross - 1) - 1) ** 2 -
-                              4 * (x_ray_cross / (x_ray_cross - 1) * tan(airfoil_rotation_angle) ** 2)))
+                              4 * (x_ray_cross / (x_ray_cross - 1) * tan(foil_rotation_angle) ** 2)))
 
         # углы входа и выхода профиля
-        if airfoil_rotation_angle > 0:
+        if foil_rotation_angle > 0:
             g_u_inlet, g_d_inlet = ((1 - upper_proximity) * inlet_angle, upper_proximity * inlet_angle)
             g_u_outlet, g_d_outlet = ((1 - upper_proximity) * outlet_angle, upper_proximity * outlet_angle)
         else:
             g_u_inlet, g_d_inlet = upper_proximity * inlet_angle, (1 - upper_proximity) * inlet_angle,
             g_u_outlet, g_d_outlet = upper_proximity * outlet_angle, (1 - upper_proximity) * outlet_angle
 
-        # ZeroDevisionError
+        # ZeroDivisionError
         if tan(atan(k_inlet) + g_u_inlet) == 0: g_u_inlet += 0.000_000_1
         if tan(atan(k_inlet) - g_d_inlet) == 0: g_d_inlet -= 0.000_000_1
         if tan(atan(k_outlet) + g_d_outlet) == 0: g_d_outlet += 0.000_000_1
@@ -685,6 +696,13 @@ class Foil:
              - tan(atan(k_outlet) + g_d_outlet) * O_outlet[0] - (-1) * O_outlet[1]),
             (-1 / tan(atan(k_outlet) + g_d_outlet), -1,
              -(-1 / tan(atan(k_outlet) + g_d_outlet)) * O_outlet[0] - (-1) * O_outlet[1]))
+
+        # TODO: pytest
+        for p in (
+                xcl_u, ycl_u, xcl_d, ycl_d, xclc_i_u, yclc_i_u, xclc_i_d, yclc_i_d, xclc_e_u, yclc_e_u, xclc_e_d,
+                yclc_e_d):
+            if np.isnan(p) or np.isinf(p):
+                raise Exception(f"{p=}")
 
         x, y = list(), list()
 
@@ -743,10 +761,10 @@ class Foil:
     def __mynk(self, discreteness: int,
                mynk_coefficient) -> tuple[tuple[float, float], ...]:
 
-        def mynk_coordinates(param: float, x) -> tuple:
+        def mynk_coordinates(parameter: float, x) -> tuple:
             """Координата y спинки и корыта"""
             part1, part2 = 0.25 * (-x - 17 * x ** 2 - 6 * x ** 3), x ** 0.87 * (1 - x) ** 0.56
-            return param * (part1 + part2), param * (part1 - part2)
+            return parameter * (part1 + part2), parameter * (part1 - part2)
 
         x = linspace(0, 1, discreteness, endpoint=True)
         yu, yl = mynk_coordinates(mynk_coefficient, x)
@@ -835,20 +853,10 @@ class Foil:
     def __manual(self, discreteness: int,
                  points, deg: int) -> tuple[tuple[float, float], ...]:
         coordinates = array(points, dtype='float64')
-        installation_angle, chord = 0, 1
-        for _ in range(3):  # для однозначности поворота
-            X, Y = array(coordinates, dtype='float64').T
-            xargmin, xargmax = np.argmin(X), np.argmax(X)
-            angle = atan((Y[xargmax] - Y[xargmin]) / (X[xargmax] - X[xargmin]))  # угол поворота
-            installation_angle -= angle # - т.к. мы идем в сторону уменьшения угла к горизонтали
-            coordinates = self.transform(tuple(((x, y) for x, y in zip(X, Y))), angle=angle)  # поворот
         x, y = array(coordinates).T
-        chord = x.max() - x.min()
+        self.__chord = x.max() - x.min()
         coordinates = self.transform(coordinates,
-                                     x0=x.min(), y0=y[np.argmin(x)], scale=(1 / chord))  # нормализация
-
-        self.__installation_angle = installation_angle
-        self.__chord = chord
+                                     x0=x.min(), y0=y[np.argmin(x)], scale=(1 / self.__chord))  # нормализация
 
         upper_lower = self.upper_lower(coordinates)
         (xu, yu), (xl, yl) = array(upper_lower['upper']).T, array(upper_lower['lower']).T
@@ -961,11 +969,12 @@ class Foil:
         else:
             print(Fore.RED + f'No such method {self.method}! Use Airfoil.help' + Fore.RESET)
 
+        if self.__chord is None: self.__chord = 1  # длина хорды = 1, если ранее не было посчитано
+
         self.__coordinates = self.transform(self.__relative_coordinates, angle=self.__installation_angle)  # поворот
         coordinates = array(self.__coordinates, dtype='float64').T
         x_min, x_max = coordinates[0].min(), coordinates[0].max()
-        if self.__chord is None: self.__chord = abs(x_max - x_min)  # длина хорды
-        self.__coordinates = self.transform(self.__coordinates, x0=x_min, scale=(1 / self.__chord))  # нормализация
+        self.__coordinates = self.transform(self.__coordinates, x0=x_min, scale=(1 / (x_max - x_min)))  # нормализация
         return self.__coordinates
 
     @staticmethod

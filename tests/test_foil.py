@@ -55,18 +55,19 @@ def generate_mynk_coefficient(low=0, high=2, num=NUM, endpoint=True):
     for x in linspace(low, high, num, endpoint=endpoint): yield x
 
 
-def generate_x_relative_camber_upper(low=0+DELTA, high=1, num=NUM, endpoint=False):
-    for x in linspace(low, high, num, endpoint=endpoint): yield x
-
-def generate_x_relative_camber_lower(low=0+DELTA, high=1, num=NUM, endpoint=False):
+def generate_x_relative_camber_upper(low=0 + DELTA, high=1, num=NUM, endpoint=False):
     for x in linspace(low, high, num, endpoint=endpoint): yield x
 
 
-def generate_relative_camber_upper(low=-1+DELTA, high=1, num=NUM, endpoint=False):
+def generate_x_relative_camber_lower(low=0 + DELTA, high=1, num=NUM, endpoint=False):
     for x in linspace(low, high, num, endpoint=endpoint): yield x
 
 
-def generate_relative_camber_lower(low=-1+DELTA, high=1, num=NUM, endpoint=False):
+def generate_relative_camber_upper(low=-1 + DELTA, high=1, num=NUM, endpoint=False):
+    for x in linspace(low, high, num, endpoint=endpoint): yield x
+
+
+def generate_relative_camber_lower(low=-1 + DELTA, high=1, num=NUM, endpoint=False):
     for x in linspace(low, high, num, endpoint=endpoint): yield x
 
 
@@ -78,12 +79,20 @@ def generate_d2y_dx2_lower():
     for _ in range(NUM): yield random.randint(-10, 10)
 
 
-def generate_theta_outlet_upper(low=-pi/2+DELTA, high=pi/2, num=NUM, endpoint=False):
+def generate_theta_outlet_upper(low=-pi / 2 + DELTA, high=pi / 2, num=NUM, endpoint=False):
     for x in linspace(low, high, num, endpoint=endpoint): yield x
 
 
-def generate_theta_outlet_lower(low=-pi/2+DELTA, high=pi/2, num=NUM, endpoint=False):
+def generate_theta_outlet_lower(low=-pi / 2 + DELTA, high=pi / 2, num=NUM, endpoint=False):
     for x in linspace(low, high, num, endpoint=endpoint): yield x
+
+
+def generate_points(low=3, high=1_000):
+    for n in range(low, high): yield random.random((n, 2))
+
+
+def generate_deg():
+    for deg in range(1, 3): yield deg
 
 
 def generate_parameters(method: str):
@@ -125,20 +134,23 @@ def generate_parameters(method: str):
                                     for theta_outlet_upper in generate_theta_outlet_upper():
                                         for theta_outlet_lower in generate_theta_outlet_lower():
                                             yield {'relative_inlet_radius': relative_inlet_radius,
-                                                   'x_relative_camber_upper': x_relative_camber_upper, 
+                                                   'x_relative_camber_upper': x_relative_camber_upper,
                                                    'x_relative_camber_lower': x_relative_camber_lower,
-                                                   'relative_camber_upper': relative_camber_upper, 
+                                                   'relative_camber_upper': relative_camber_upper,
                                                    'relative_camber_lower': relative_camber_lower,
                                                    'd2y_dx2_upper': d2y_dx2_upper,
                                                    'd2y_dx2_lower': d2y_dx2_lower,
                                                    'theta_outlet_upper': theta_outlet_upper,
                                                    'theta_outlet_lower': theta_outlet_lower}
     elif method == 'BEZIER':
+        for points in generate_points():
+            yield {'points': points}
+    elif method == 'MANUAL':
         pass
 
 
 def test_foil_init():
-    for method in ('NACA', 'BMSTU', 'MYNK', 'PARSEC', ):
+    for method in ('NACA', 'BMSTU', 'MYNK', 'PARSEC', 'BEZIER',):
         for parameters in generate_parameters(method):
             assert Foil(method, **parameters)
             break
@@ -169,15 +181,17 @@ def test_foil_parsec():
 
 
 def test_foil_bezier():
-    pass
+    method = 'BEZIER'
+    for parameters in generate_parameters(method):
+        assert Foil(method, **parameters).coordinates
 
 
 def test_foil_manual():
-    pass
+    method = 'MANUAL'
 
 
 def test_foil_circle():
-    pass
+    method = 'CIRCLE'
 
 
 def test_foil_show():
