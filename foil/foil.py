@@ -616,22 +616,20 @@ class Foil:
         foil_rotation_angle = pi - rotation_angle  # угол поворота профиля
 
         # tan угла входа и выхода потока
+        b = -(x_ray_cross / (x_ray_cross - 1) - 1)
+        D = b ** 2 - 4 * (x_ray_cross / (x_ray_cross - 1) * tan(foil_rotation_angle) ** 2)  # discriminant
+
         k_inlet = 1 / (2 * x_ray_cross / (x_ray_cross - 1) * tan(foil_rotation_angle))
         k_outlet = 1 / (2 * tan(foil_rotation_angle))
+
         if tan(foil_rotation_angle) * foil_rotation_angle > 0:
-            k_inlet *= ((x_ray_cross / (x_ray_cross - 1) - 1) -
-                        sqrt((x_ray_cross / (x_ray_cross - 1) - 1) ** 2 -
-                             4 * (x_ray_cross / (x_ray_cross - 1) * tan(foil_rotation_angle) ** 2)))
-            k_outlet *= ((x_ray_cross / (x_ray_cross - 1) - 1) -
-                         sqrt((x_ray_cross / (x_ray_cross - 1) - 1) ** 2 -
-                              4 * (x_ray_cross / (x_ray_cross - 1) * tan(foil_rotation_angle) ** 2)))
+            k_inlet *= (-b - sqrt(D))
+            k_outlet *= (-b - sqrt(D))
         else:
-            k_inlet *= ((x_ray_cross / (x_ray_cross - 1) - 1) +
-                        sqrt((x_ray_cross / (x_ray_cross - 1) - 1) ** 2 -
-                             4 * (x_ray_cross / (x_ray_cross - 1) * tan(foil_rotation_angle) ** 2)))
-            k_outlet *= ((x_ray_cross / (x_ray_cross - 1) - 1) +
-                         sqrt((x_ray_cross / (x_ray_cross - 1) - 1) ** 2 -
-                              4 * (x_ray_cross / (x_ray_cross - 1) * tan(foil_rotation_angle) ** 2)))
+            k_inlet *= (-b + sqrt(D))
+            k_outlet *= (-b + sqrt(D))
+
+        del D, b
 
         # углы входа и выхода профиля
         if foil_rotation_angle > 0:
@@ -651,58 +649,56 @@ class Foil:
         O_inlet = relative_inlet_radius, k_inlet * relative_inlet_radius
         O_outlet = 1 - relative_outlet_radius, -k_outlet * relative_outlet_radius
 
+        A = lambda k, angle: tan(atan(k) + angle)  # коэффициент A прямой
+        B = -1  # коэффициент B прямой
+
+        C = lambda A, radius, O: sqrt(A ** 2 + B ** 2) * radius - A * O[0] - B * O[1]  # коэффициент C прямой
+
         # точки пересечения линий спинки и корыта
         xcl_u, ycl_u = coordinate_intersection_lines(
-            (tan(atan(k_inlet) + g_u_inlet), -1,
-             sqrt(tan(atan(k_inlet) + g_u_inlet) ** 2 + 1) * relative_inlet_radius -
-             (tan(atan(k_inlet) + g_u_inlet)) * O_inlet[0] - (-1) * O_inlet[1]),
-            (tan(atan(k_outlet) - g_u_outlet), -1,
-             sqrt(tan(atan(k_outlet) - g_u_outlet) ** 2 + 1) * relative_outlet_radius -
-             (tan(atan(k_outlet) - g_u_outlet)) * O_outlet[0] - (-1) * O_outlet[1]))
+            (A(k_inlet, +g_u_inlet), B,
+             sqrt(A(k_inlet, +g_u_inlet) ** 2 + B ** 2) * relative_inlet_radius -
+             A(k_inlet, +g_u_inlet) * O_inlet[0] - B * O_inlet[1]),
+            (A(k_outlet, -g_u_outlet), B,
+             sqrt(A(k_outlet, -g_u_outlet) ** 2 + B ** 2) * relative_outlet_radius -
+             A(k_outlet, -g_u_outlet) * O_outlet[0] - B * O_outlet[1]))
 
         xcl_d, ycl_d = coordinate_intersection_lines(
-            (tan(atan(k_inlet) - g_d_inlet), -1,
-             -sqrt(tan(atan(k_inlet) - g_d_inlet) ** 2 + 1) * relative_inlet_radius -
-             (tan(atan(k_inlet) - g_d_inlet)) * O_inlet[0] - (-1) * O_inlet[1]),
-            (tan(atan(k_outlet) + g_d_outlet), -1,
-             -sqrt(tan(atan(k_outlet) + g_d_outlet) ** 2 + 1) * relative_outlet_radius -
-             (tan(atan(k_outlet) + g_d_outlet)) * O_outlet[0] - (-1) * O_outlet[1]))
+            (A(k_inlet, -g_d_inlet), B,
+             -sqrt(A(k_inlet, -g_d_inlet) ** 2 + B ** 2) * relative_inlet_radius -
+             A(k_inlet, -g_d_inlet) * O_inlet[0] - B * O_inlet[1]),
+            (A(k_outlet, +g_d_outlet), B,
+             -sqrt(A(k_outlet, +g_d_outlet) ** 2 + B ** 2) * relative_outlet_radius -
+             A(k_outlet, +g_d_outlet) * O_outlet[0] - B * O_outlet[1]))
+
+        for p in (xcl_u, ycl_u, xcl_d, ycl_d):  # TODO: pytest
+            assert not isnan(p) and not isinf(p), f'{p = }, {(xcl_u, ycl_u, xcl_d, ycl_d)}'
 
         # точки пересечения окружностей со спинкой и корытом
         xclc_i_u, yclc_i_u = coordinate_intersection_lines(
-            (tan(atan(k_inlet) + g_u_inlet), -1,
-             sqrt(tan(atan(k_inlet) + g_u_inlet) ** 2 + 1) * relative_inlet_radius
-             - (tan(atan(k_inlet) + g_u_inlet)) * O_inlet[0] - (-1) * O_inlet[1]),
-            (-1 / (tan(atan(k_inlet) + g_u_inlet)), -1,
-             -(-1 / tan(atan(k_inlet) + g_u_inlet)) * O_inlet[0] - (-1) * O_inlet[1]))
+            (A(k_inlet, +g_u_inlet), B,
+             sqrt(A(k_inlet, +g_u_inlet) ** 2 + B ** 2) * relative_inlet_radius
+             - A(k_inlet, +g_u_inlet) * O_inlet[0] - B * O_inlet[1]),
+            (-1 / A(k_inlet, +g_u_inlet), B, -(-1 / A(k_inlet, +g_u_inlet)) * O_inlet[0] - B * O_inlet[1]))
 
         xclc_i_d, yclc_i_d = coordinate_intersection_lines(
-            (tan(atan(k_inlet) - g_d_inlet), -1,
-             -sqrt(tan(atan(k_inlet) - g_d_inlet) ** 2 + 1) * relative_inlet_radius
-             - (tan(atan(k_inlet) - g_d_inlet)) * O_inlet[0] - (-1) * O_inlet[1]),
-            (-1 / (tan(atan(k_inlet) - g_d_inlet)), -1,
-             -(-1 / tan(atan(k_inlet) - g_d_inlet)) * O_inlet[0] - (-1) * O_inlet[1]))
+            (A(k_inlet, -g_d_inlet), B,
+             -sqrt(A(k_inlet, -g_d_inlet) ** 2 + B ** 2) * relative_inlet_radius
+             - A(k_inlet, -g_d_inlet) * O_inlet[0] - B * O_inlet[1]),
+            (-1 / A(k_inlet, -g_d_inlet), B, -(-1 / A(k_inlet, -g_d_inlet)) * O_inlet[0] - B * O_inlet[1]))
 
         xclc_e_u, yclc_e_u = coordinate_intersection_lines(
-            (tan(atan(k_outlet) - g_u_outlet), -1,
-             sqrt(tan(atan(k_outlet) - g_u_outlet) ** 2 + 1) * relative_outlet_radius
-             - tan(atan(k_outlet) - g_u_outlet) * O_outlet[0] - (-1) * O_outlet[1]),
-            (-1 / tan(atan(k_outlet) - g_u_outlet), -1,
-             -(-1 / tan(atan(k_outlet) - g_u_outlet)) * O_outlet[0] - (-1) * O_outlet[1]))
+            (A(k_outlet, -g_u_outlet), B,
+             sqrt(A(k_outlet, -g_u_outlet) ** 2 + B ** 2) * relative_outlet_radius
+             - A(k_outlet, -g_u_outlet) * O_outlet[0] - B * O_outlet[1]),
+            (-1 / A(k_outlet, -g_u_outlet), B, -(-1 / A(k_outlet, -g_u_outlet)) * O_outlet[0] - B * O_outlet[1]))
 
         xclc_e_d, yclc_e_d = coordinate_intersection_lines(
-            (tan(atan(k_outlet) + g_d_outlet), -1,
-             -sqrt(tan(atan(k_outlet) + g_d_outlet) ** 2 + 1) * relative_outlet_radius
-             - tan(atan(k_outlet) + g_d_outlet) * O_outlet[0] - (-1) * O_outlet[1]),
-            (-1 / tan(atan(k_outlet) + g_d_outlet), -1,
-             -(-1 / tan(atan(k_outlet) + g_d_outlet)) * O_outlet[0] - (-1) * O_outlet[1]))
-
-        # TODO: pytest
-        for p in (
-                xcl_u, ycl_u, xcl_d, ycl_d, xclc_i_u, yclc_i_u, xclc_i_d, yclc_i_d, xclc_e_u, yclc_e_u, xclc_e_d,
-                yclc_e_d):
-            if np.isnan(p) or np.isinf(p):
-                raise Exception(f"{p=}")
+            (tan(atan(k_outlet) + g_d_outlet), B,
+             -sqrt(tan(atan(k_outlet) + g_d_outlet) ** 2 + B ** 2) * relative_outlet_radius
+             - tan(atan(k_outlet) + g_d_outlet) * O_outlet[0] - B * O_outlet[1]),
+            (-1 / tan(atan(k_outlet) + g_d_outlet), B,
+             -(-1 / tan(atan(k_outlet) + g_d_outlet)) * O_outlet[0] - B * O_outlet[1]))
 
         x, y = list(), list()
 
