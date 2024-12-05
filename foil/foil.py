@@ -3,6 +3,7 @@ import sys
 import time
 from types import MappingProxyType  # неизменяемый словарь
 import warnings
+from functools import lru_cache
 
 from tqdm import tqdm
 from colorama import Fore
@@ -616,20 +617,19 @@ class Foil:
         foil_rotation_angle = pi - rotation_angle  # угол поворота профиля
 
         # tan угла входа и выхода потока
-        b = -(x_ray_cross / (x_ray_cross - 1) - 1)
-        D = b ** 2 - 4 * (x_ray_cross / (x_ray_cross - 1) * tan(foil_rotation_angle) ** 2)  # discriminant
-
-        k_inlet = 1 / (2 * x_ray_cross / (x_ray_cross - 1) * tan(foil_rotation_angle))
-        k_outlet = 1 / (2 * tan(foil_rotation_angle))
+        a = x_ray_cross / (x_ray_cross - 1) * tan(foil_rotation_angle)
+        b = 1 - x_ray_cross / (x_ray_cross - 1)
+        c = tan(foil_rotation_angle)
+        D = b ** 2 - 4 * a * c  # discriminant
 
         if tan(foil_rotation_angle) * foil_rotation_angle > 0:
-            k_inlet *= (-b - sqrt(D))
-            k_outlet *= (-b - sqrt(D))
+            k_inlet = (-b - sqrt(D)) / (2 * a)
+            k_outlet = (-b - sqrt(D)) / (2 * tan(foil_rotation_angle))
         else:
-            k_inlet *= (-b + sqrt(D))
-            k_outlet *= (-b + sqrt(D))
+            k_inlet = (-b + sqrt(D)) / (2 * a)
+            k_outlet = (-b + sqrt(D)) / (2 * tan(foil_rotation_angle))
 
-        del D, b
+        del a, b, D
 
         # углы входа и выхода профиля
         if foil_rotation_angle > 0:
@@ -649,27 +649,23 @@ class Foil:
         O_inlet = relative_inlet_radius, k_inlet * relative_inlet_radius
         O_outlet = 1 - relative_outlet_radius, -k_outlet * relative_outlet_radius
 
-        A = lambda k, angle: tan(atan(k) + angle)  # коэффициент A прямой
+        @lru_cache(maxsize=None)
+        def A(k, angle):
+            """Коэффициент A прямой"""
+            return tan(atan(k) + angle)
+
         B = -1  # коэффициент B прямой
 
         C = lambda A, radius, O: sqrt(A ** 2 + B ** 2) * radius - A * O[0] - B * O[1]  # коэффициент C прямой
 
         # точки пересечения линий спинки и корыта
         xcl_u, ycl_u = coordinate_intersection_lines(
-            (A(k_inlet, +g_u_inlet), B,
-             sqrt(A(k_inlet, +g_u_inlet) ** 2 + B ** 2) * relative_inlet_radius -
-             A(k_inlet, +g_u_inlet) * O_inlet[0] - B * O_inlet[1]),
-            (A(k_outlet, -g_u_outlet), B,
-             sqrt(A(k_outlet, -g_u_outlet) ** 2 + B ** 2) * relative_outlet_radius -
-             A(k_outlet, -g_u_outlet) * O_outlet[0] - B * O_outlet[1]))
+            (A(k_inlet, +g_u_inlet), B, C(A(k_inlet, +g_u_inlet), relative_inlet_radius, O_inlet)),
+            (A(k_outlet, -g_u_outlet), B, C(A(k_outlet, -g_u_outlet), relative_outlet_radius, O_outlet)))
 
         xcl_d, ycl_d = coordinate_intersection_lines(
-            (A(k_inlet, -g_d_inlet), B,
-             -sqrt(A(k_inlet, -g_d_inlet) ** 2 + B ** 2) * relative_inlet_radius -
-             A(k_inlet, -g_d_inlet) * O_inlet[0] - B * O_inlet[1]),
-            (A(k_outlet, +g_d_outlet), B,
-             -sqrt(A(k_outlet, +g_d_outlet) ** 2 + B ** 2) * relative_outlet_radius -
-             A(k_outlet, +g_d_outlet) * O_outlet[0] - B * O_outlet[1]))
+            (A(k_inlet, -g_d_inlet), B, C(A(k_inlet, -g_d_inlet), -relative_inlet_radius, O_inlet)),
+            (A(k_outlet, +g_d_outlet), B, C(A(k_outlet, +g_d_outlet), -relative_outlet_radius, O_outlet)))
 
         for p in (xcl_u, ycl_u, xcl_d, ycl_d):  # TODO: pytest
             assert not isnan(p) and not isinf(p), f'{p = }, {(xcl_u, ycl_u, xcl_d, ycl_d)}'
