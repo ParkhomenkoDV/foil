@@ -639,12 +639,6 @@ class Foil:
             g_u_inlet, g_d_inlet = upper_proximity * inlet_angle, (1 - upper_proximity) * inlet_angle,
             g_u_outlet, g_d_outlet = upper_proximity * outlet_angle, (1 - upper_proximity) * outlet_angle
 
-        # ZeroDivisionError
-        if tan(atan(k_inlet) + g_u_inlet) == 0: g_u_inlet += 0.000_000_1
-        if tan(atan(k_inlet) - g_d_inlet) == 0: g_d_inlet -= 0.000_000_1
-        if tan(atan(k_outlet) + g_d_outlet) == 0: g_d_outlet += 0.000_000_1
-        if tan(atan(k_outlet) - g_u_outlet) == 0: g_u_outlet -= 0.000_000_1
-
         # положения центров окружностей входной и выходной кромок
         O_inlet = relative_inlet_radius, k_inlet * relative_inlet_radius
         O_outlet = 1 - relative_outlet_radius, -k_outlet * relative_outlet_radius
@@ -657,6 +651,12 @@ class Foil:
         B = -1  # коэффициент B прямой
 
         C = lambda A, radius, O: sqrt(A ** 2 + B ** 2) * radius - A * O[0] - B * O[1]  # коэффициент C прямой
+
+        '''# ZeroDivisionError
+        if A(k_inlet, +g_u_inlet) == 0: g_u_inlet += 0.000_000_1
+        if A(k_inlet, -g_d_inlet) == 0: g_d_inlet -= 0.000_000_1
+        if A(k_outlet, +g_d_outlet) == 0: g_d_outlet += 0.000_000_1
+        if A(k_outlet, -g_u_outlet) == 0: g_u_outlet -= 0.000_000_1'''
 
         # точки пересечения линий спинки и корыта
         xcl_u, ycl_u = coordinate_intersection_lines(
@@ -672,29 +672,20 @@ class Foil:
 
         # точки пересечения окружностей со спинкой и корытом
         xclc_i_u, yclc_i_u = coordinate_intersection_lines(
-            (A(k_inlet, +g_u_inlet), B,
-             sqrt(A(k_inlet, +g_u_inlet) ** 2 + B ** 2) * relative_inlet_radius
-             - A(k_inlet, +g_u_inlet) * O_inlet[0] - B * O_inlet[1]),
+            (A(k_inlet, +g_u_inlet), B, C(A(k_inlet, +g_u_inlet), relative_inlet_radius, O_inlet)),
             (-1 / A(k_inlet, +g_u_inlet), B, -(-1 / A(k_inlet, +g_u_inlet)) * O_inlet[0] - B * O_inlet[1]))
 
         xclc_i_d, yclc_i_d = coordinate_intersection_lines(
-            (A(k_inlet, -g_d_inlet), B,
-             -sqrt(A(k_inlet, -g_d_inlet) ** 2 + B ** 2) * relative_inlet_radius
-             - A(k_inlet, -g_d_inlet) * O_inlet[0] - B * O_inlet[1]),
+            (A(k_inlet, -g_d_inlet), B, C(A(k_inlet, -g_d_inlet), relative_inlet_radius, O_inlet)),
             (-1 / A(k_inlet, -g_d_inlet), B, -(-1 / A(k_inlet, -g_d_inlet)) * O_inlet[0] - B * O_inlet[1]))
 
         xclc_e_u, yclc_e_u = coordinate_intersection_lines(
-            (A(k_outlet, -g_u_outlet), B,
-             sqrt(A(k_outlet, -g_u_outlet) ** 2 + B ** 2) * relative_outlet_radius
-             - A(k_outlet, -g_u_outlet) * O_outlet[0] - B * O_outlet[1]),
+            (A(k_outlet, -g_u_outlet), B, C(A(k_outlet, -g_u_outlet), relative_outlet_radius, O_outlet)),
             (-1 / A(k_outlet, -g_u_outlet), B, -(-1 / A(k_outlet, -g_u_outlet)) * O_outlet[0] - B * O_outlet[1]))
 
         xclc_e_d, yclc_e_d = coordinate_intersection_lines(
-            (tan(atan(k_outlet) + g_d_outlet), B,
-             -sqrt(tan(atan(k_outlet) + g_d_outlet) ** 2 + B ** 2) * relative_outlet_radius
-             - tan(atan(k_outlet) + g_d_outlet) * O_outlet[0] - B * O_outlet[1]),
-            (-1 / tan(atan(k_outlet) + g_d_outlet), B,
-             -(-1 / tan(atan(k_outlet) + g_d_outlet)) * O_outlet[0] - B * O_outlet[1]))
+            (tan(atan(k_outlet) + g_d_outlet), B, C(A(k_outlet, +g_d_outlet), relative_outlet_radius, O_outlet)),
+            (-1 / A(k_outlet, +g_d_outlet), B, -(-1 / A(k_outlet, +g_d_outlet)) * O_outlet[0] - B * O_outlet[1]))
 
         x, y = list(), list()
 
