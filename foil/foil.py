@@ -341,6 +341,15 @@ METHODS = MappingProxyType({
                    'is_airfoil': VOCABULARY['is_airfoil'], }}, })
 
 
+class LinesIntersectionError(Exception):
+    """
+    Ошибка нахождения точки пересечения из-за возможных причин:
+    - параллельность прямых
+    - совпадение прямых
+    """
+    pass
+
+
 class Foil:
     """Относительный профиль"""
 
@@ -616,7 +625,7 @@ class Foil:
 
         foil_rotation_angle = pi - rotation_angle  # угол поворота профиля
 
-        # tan угла входа и выхода потока
+        # tan угла входа и выхода потока, найденные из ур-я угла между прямыми
         a = x_ray_cross / (x_ray_cross - 1) * tan(foil_rotation_angle)
         b = 1 - x_ray_cross / (x_ray_cross - 1)
         c = tan(foil_rotation_angle)
@@ -629,7 +638,7 @@ class Foil:
             k_inlet = (-b + sqrt(D)) / (2 * a)
             k_outlet = (-b + sqrt(D)) / (2 * tan(foil_rotation_angle))
 
-        del a, b, D
+        del a, b, c, D
 
         # углы входа и выхода профиля
         if foil_rotation_angle > 0:
@@ -652,12 +661,6 @@ class Foil:
 
         C = lambda A, radius, O: sqrt(A ** 2 + B ** 2) * radius - A * O[0] - B * O[1]  # коэффициент C прямой
 
-        '''# ZeroDivisionError
-        if A(k_inlet, +g_u_inlet) == 0: g_u_inlet += 0.000_000_1
-        if A(k_inlet, -g_d_inlet) == 0: g_d_inlet -= 0.000_000_1
-        if A(k_outlet, +g_d_outlet) == 0: g_d_outlet += 0.000_000_1
-        if A(k_outlet, -g_u_outlet) == 0: g_u_outlet -= 0.000_000_1'''
-
         # точки пересечения линий спинки и корыта
         xcl_u, ycl_u = coordinate_intersection_lines(
             (A(k_inlet, +g_u_inlet), B, C(A(k_inlet, +g_u_inlet), relative_inlet_radius, O_inlet)),
@@ -667,8 +670,10 @@ class Foil:
             (A(k_inlet, -g_d_inlet), B, C(A(k_inlet, -g_d_inlet), -relative_inlet_radius, O_inlet)),
             (A(k_outlet, +g_d_outlet), B, C(A(k_outlet, +g_d_outlet), -relative_outlet_radius, O_outlet)))
 
-        for p in (xcl_u, ycl_u, xcl_d, ycl_d):  # TODO: pytest
-            assert not isnan(p) and not isinf(p), f'{p = }, {(xcl_u, ycl_u, xcl_d, ycl_d)}'
+        if isinf([xcl_u, ycl_u, xcl_d, ycl_d]).any(): 
+            raise LinesIntersectionError('parallel lines')  # параллельность прямых
+        if isnan([xcl_u, ycl_u, xcl_d, ycl_d]).any(): 
+            raise LinesIntersectionError('coincidence lines')  # совпадение прямых
 
         # точки пересечения окружностей со спинкой и корытом
         xclc_i_u, yclc_i_u = coordinate_intersection_lines(
@@ -676,7 +681,7 @@ class Foil:
             (-1 / A(k_inlet, +g_u_inlet), B, -(-1 / A(k_inlet, +g_u_inlet)) * O_inlet[0] - B * O_inlet[1]))
 
         xclc_i_d, yclc_i_d = coordinate_intersection_lines(
-            (A(k_inlet, -g_d_inlet), B, C(A(k_inlet, -g_d_inlet), relative_inlet_radius, O_inlet)),
+            (A(k_inlet, -g_d_inlet), B, C(A(k_inlet, -g_d_inlet), -relative_inlet_radius, O_inlet)),
             (-1 / A(k_inlet, -g_d_inlet), B, -(-1 / A(k_inlet, -g_d_inlet)) * O_inlet[0] - B * O_inlet[1]))
 
         xclc_e_u, yclc_e_u = coordinate_intersection_lines(
@@ -684,7 +689,7 @@ class Foil:
             (-1 / A(k_outlet, -g_u_outlet), B, -(-1 / A(k_outlet, -g_u_outlet)) * O_outlet[0] - B * O_outlet[1]))
 
         xclc_e_d, yclc_e_d = coordinate_intersection_lines(
-            (tan(atan(k_outlet) + g_d_outlet), B, C(A(k_outlet, +g_d_outlet), relative_outlet_radius, O_outlet)),
+            (A(k_outlet, +g_d_outlet), B, C(A(k_outlet, +g_d_outlet), -relative_outlet_radius, O_outlet)),
             (-1 / A(k_outlet, +g_d_outlet), B, -(-1 / A(k_outlet, +g_d_outlet)) * O_outlet[0] - B * O_outlet[1]))
 
         x, y = list(), list()
@@ -1226,7 +1231,7 @@ def test() -> None:
 
     foils = list()
 
-    if 'NACA' != '':
+    if 'NACA' == '':
         parameters = {
             'relative_thickness': 0.2,
             'x_relative_camber': 0.3,
