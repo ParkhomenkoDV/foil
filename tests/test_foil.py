@@ -89,12 +89,12 @@ def generate_theta_outlet_lower(low=-pi / 2 + DELTA, high=pi / 2, num=NUM, endpo
     for x in linspace(low, high, num, endpoint=endpoint): yield x
 
 
-def generate_points(low=3, high=1_000):
+def generate_points(low=3, high=1_00):
     for n in range(low, high): yield random.random((n, 2))
 
 
-def generate_deg():
-    for deg in range(1, 3): yield deg
+def generate_deg(low=1, high=3, endpoint=True):
+    for deg in range(low, high + 1 if endpoint else high): yield deg
 
 
 def generate_parameters(method: str):
@@ -148,7 +148,9 @@ def generate_parameters(method: str):
         for points in generate_points():
             yield {'points': points}
     elif method == 'MANUAL':
-        pass
+        for deg in generate_deg():
+            for points in generate_points(4):
+                yield {'points': points, 'deg': deg}
 
 
 def test_foil_init():
@@ -193,6 +195,8 @@ def test_foil_bezier():
 
 def test_foil_manual():
     method = 'MANUAL'
+    for parameters in generate_parameters(method):
+        assert Foil(method, **parameters).coordinates
 
 
 def test_foil_circle_foil():

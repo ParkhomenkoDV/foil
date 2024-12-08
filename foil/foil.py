@@ -512,16 +512,20 @@ class Foil:
         self.__x, self.__y = tuple([float(x) for x in X]), tuple([float(y) for y in Y])
         return self.__x, self.__y
 
-    def function_upper(self, kind: int, fill_value: str = 'extrapolate') -> interpolate.interp1d:
+    def function_upper(self, kind: int, fill_value: str = 'extrapolate', 
+                       relative:bool=False) -> interpolate.interp1d:
         """Функция спинки аэродинамического профиля"""
         assert isinstance(kind, int) and 1 <= kind <= 3
-        upper = self.upper_lower(self.coordinates)['upper']
+        coordinates = self.relative_coordinates if relative else self.coordinates
+        upper = self.upper_lower(coordinates)['upper']
         return interpolate.interp1d(*array(upper, dtype='float64').T, kind=kind, fill_value=fill_value)
 
-    def function_lower(self, kind: int, fill_value: str = 'extrapolate') -> interpolate.interp1d:
+    def function_lower(self, kind: int, fill_value: str = 'extrapolate', 
+                       relative:bool=False) -> interpolate.interp1d:
         """Функция корыта аэродинамического профиля"""
         assert isinstance(kind, int) and 1 <= kind <= 3
-        lower = self.upper_lower(self.coordinates)['lower']
+        coordinates = self.relative_coordinates if relative else self.coordinates
+        lower = self.upper_lower(coordinates)['lower']
         return interpolate.interp1d(*array(lower, dtype='float64').T, kind=kind, fill_value=fill_value)
 
     @classmethod
