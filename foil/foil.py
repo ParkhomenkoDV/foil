@@ -632,18 +632,16 @@ class Foil:
         D = b ** 2 - 4 * a * c  # discriminant
 
         if tan(foil_rotation_angle) * foil_rotation_angle > 0:
-            k_inlet = (-b - sqrt(D)) / (2 * a)
-            k_outlet = (-b - sqrt(D)) / (2 * tan(foil_rotation_angle))
+            k_inlet, k_outlet = (-b - sqrt(D)) / (2 * a), (-b - sqrt(D)) / (2 * tan(foil_rotation_angle))
         else:
-            k_inlet = (-b + sqrt(D)) / (2 * a)
-            k_outlet = (-b + sqrt(D)) / (2 * tan(foil_rotation_angle))
+            k_inlet, k_outlet = (-b + sqrt(D)) / (2 * a), (-b + sqrt(D)) / (2 * tan(foil_rotation_angle))
 
         del a, b, c, D
 
         # углы входа и выхода профиля
         if foil_rotation_angle > 0:
-            g_u_inlet, g_d_inlet = ((1 - upper_proximity) * inlet_angle, upper_proximity * inlet_angle)
-            g_u_outlet, g_d_outlet = ((1 - upper_proximity) * outlet_angle, upper_proximity * outlet_angle)
+            g_u_inlet, g_d_inlet = (1 - upper_proximity) * inlet_angle, upper_proximity * inlet_angle
+            g_u_outlet, g_d_outlet = (1 - upper_proximity) * outlet_angle, upper_proximity * outlet_angle
         else:
             g_u_inlet, g_d_inlet = upper_proximity * inlet_angle, (1 - upper_proximity) * inlet_angle,
             g_u_outlet, g_d_outlet = upper_proximity * outlet_angle, (1 - upper_proximity) * outlet_angle
@@ -662,57 +660,56 @@ class Foil:
         C = lambda A, radius, O: sqrt(A ** 2 + B ** 2) * radius - A * O[0] - B * O[1]  # коэффициент C прямой
 
         # точки пересечения линий спинки и корыта
-        xcl_u, ycl_u = coordinate_intersection_lines(
+        cl_u = coordinate_intersection_lines(
             (A(k_inlet, +g_u_inlet), B, C(A(k_inlet, +g_u_inlet), relative_inlet_radius, O_inlet)),
             (A(k_outlet, -g_u_outlet), B, C(A(k_outlet, -g_u_outlet), relative_outlet_radius, O_outlet)))
-
-        xcl_d, ycl_d = coordinate_intersection_lines(
+        cl_d = coordinate_intersection_lines(
             (A(k_inlet, -g_d_inlet), B, C(A(k_inlet, -g_d_inlet), -relative_inlet_radius, O_inlet)),
             (A(k_outlet, +g_d_outlet), B, C(A(k_outlet, +g_d_outlet), -relative_outlet_radius, O_outlet)))
 
-        if isinf([xcl_u, ycl_u, xcl_d, ycl_d]).any(): 
-            raise LinesIntersectionError('parallel lines')  # параллельность прямых
-        if isnan([xcl_u, ycl_u, xcl_d, ycl_d]).any(): 
-            raise LinesIntersectionError('coincidence lines')  # совпадение прямых
+        for place, point in zip(('upper', 'lower'), (cl_u, cl_d)):
+            if isnan(point).any(): raise LinesIntersectionError(f'{place} intersection')
+
+        AA = lambda A: -1 / A if A != 0 else -inf # Коэффициент A перпендикуляра прямой
 
         # точки пересечения окружностей со спинкой и корытом
-        xclc_i_u, yclc_i_u = coordinate_intersection_lines(
+        clc_i_u = coordinate_intersection_lines(
             (A(k_inlet, +g_u_inlet), B, C(A(k_inlet, +g_u_inlet), relative_inlet_radius, O_inlet)),
-            (-1 / A(k_inlet, +g_u_inlet), B, -(-1 / A(k_inlet, +g_u_inlet)) * O_inlet[0] - B * O_inlet[1]))
-
-        xclc_i_d, yclc_i_d = coordinate_intersection_lines(
+            (AA(A(k_inlet, +g_u_inlet)), B, -AA(A(k_inlet, +g_u_inlet)) * O_inlet[0] - B * O_inlet[1]))
+        clc_i_d = coordinate_intersection_lines(
             (A(k_inlet, -g_d_inlet), B, C(A(k_inlet, -g_d_inlet), -relative_inlet_radius, O_inlet)),
-            (-1 / A(k_inlet, -g_d_inlet), B, -(-1 / A(k_inlet, -g_d_inlet)) * O_inlet[0] - B * O_inlet[1]))
-
-        xclc_e_u, yclc_e_u = coordinate_intersection_lines(
+            (AA(A(k_inlet, -g_d_inlet)), B, -AA(A(k_inlet, -g_d_inlet)) * O_inlet[0] - B * O_inlet[1]))
+        clc_e_u = coordinate_intersection_lines(
             (A(k_outlet, -g_u_outlet), B, C(A(k_outlet, -g_u_outlet), relative_outlet_radius, O_outlet)),
-            (-1 / A(k_outlet, -g_u_outlet), B, -(-1 / A(k_outlet, -g_u_outlet)) * O_outlet[0] - B * O_outlet[1]))
-
-        xclc_e_d, yclc_e_d = coordinate_intersection_lines(
+            (AA(A(k_outlet, -g_u_outlet)), B, -AA(A(k_outlet, -g_u_outlet)) * O_outlet[0] - B * O_outlet[1]))
+        clc_e_d = coordinate_intersection_lines(
             (A(k_outlet, +g_d_outlet), B, C(A(k_outlet, +g_d_outlet), -relative_outlet_radius, O_outlet)),
-            (-1 / A(k_outlet, +g_d_outlet), B, -(-1 / A(k_outlet, +g_d_outlet)) * O_outlet[0] - B * O_outlet[1]))
+            (AA(A(k_outlet, +g_d_outlet)), B, -AA(A(k_outlet, +g_d_outlet)) * O_outlet[0] - B * O_outlet[1]))
 
-        x, y = list(), list()
+        for place, point in zip(('upper inlet', 'lower inlet', 'upper outlet', 'lower outlet'), 
+                                (clc_i_u, clc_i_d, clc_e_u, clc_e_d)):
+            if isnan(point).any(): raise LinesIntersectionError(f'{place} intersection')
+
+        x, y = list(), list()   
 
         # окружность выходной кромки спинки
-        an = angle_between(points=((1, O_outlet[1]), O_outlet, (xclc_e_u, yclc_e_u)))
+        an = angle_between(points=((1, O_outlet[1]), O_outlet, clc_e_u))
         if not isnan(an):  # при не нулевом радиусе окружности
-            if O_outlet[0] > xclc_e_u: an = pi - an
+            if O_outlet[0] > clc_e_u[0]: an = pi - an
             # уменьшение угла для предотвращения дублирования координат
             angles = linspace(0, an * 0.99, discreteness, endpoint=False)
             x += (1 - relative_outlet_radius * (1 - cos(angles))).tolist()
             y += (O_outlet[1] + relative_outlet_radius * sin(angles)).tolist()
 
         # спинка
-        xu, yu = bernstein_curve(((xclc_e_u, yclc_e_u), (xcl_u, ycl_u), (xclc_i_u, yclc_i_u)),
-                                 N=discreteness).T.tolist()
+        xu, yu = bernstein_curve((clc_e_u, cl_u, clc_i_u), N=discreteness).T.tolist()
         x += xu
         y += yu
 
         # точки входной окружности кромки по спинке
-        an = angle_between(points=((0, O_inlet[1]), O_inlet, (xclc_i_u, yclc_i_u)))
+        an = angle_between(points=((0, O_inlet[1]), O_inlet, clc_i_u))
         if not isnan(an):  # при не нулевом радиусе окружности
-            if xclc_i_u > O_inlet[0]: an = pi - an
+            if clc_i_u[0] > O_inlet[0]: an = pi - an
             # уменьшение угла для предотвращения дублирования координат
             angles = linspace(0, an * 0.99, discreteness, endpoint=False)
             x += (relative_inlet_radius * (1 - cos(angles))).tolist()[::-1]
@@ -721,24 +718,23 @@ class Foil:
         x.pop(), y.pop()  # удаление дубликата входной точки
 
         # окружность входной кромки корыта
-        an = angle_between(points=((0, O_inlet[1]), O_inlet, (xclc_i_d, yclc_i_d)))
+        an = angle_between(points=((0, O_inlet[1]), O_inlet, clc_i_d))
         if not isnan(an):  # при не нулевом радиусе окружности
-            if xclc_i_d > O_inlet[0]: an = pi - an
+            if clc_i_d[0] > O_inlet[0]: an = pi - an
             # уменьшение угла для предотвращения дублирования координат
             angles = linspace(0, an * 0.99, discreteness, endpoint=False)
             x += (relative_inlet_radius * (1 - cos(angles))).tolist()
             y += (O_inlet[1] - relative_inlet_radius * sin(angles)).tolist()
 
         # корыто
-        xd, yd = bernstein_curve(((xclc_i_d, yclc_i_d), (xcl_d, ycl_d), (xclc_e_d, yclc_e_d)),
-                                 N=discreteness).T.tolist()
+        xd, yd = bernstein_curve((clc_i_d, cl_d, clc_e_d), N=discreteness).T.tolist()
         x += xd
         y += yd
 
         # точки выходной окружности кромки по корыту
-        an = angle_between(points=((1, O_outlet[1]), O_outlet, (xclc_e_d, yclc_e_d)))
+        an = angle_between(points=((1, O_outlet[1]), O_outlet, clc_e_d))
         if not isnan(an):  # при не нулевом радиусе окружности
-            if O_outlet[0] > xclc_e_d: an = pi - an
+            if O_outlet[0] > clc_e_d[0]: an = pi - an
             # уменьшение угла для предотвращения дублирования координат
             angles = linspace(0, an * 0.99, discreteness, endpoint=False)
             x += (1 - relative_outlet_radius * (1 - cos(angles))).tolist()[::-1]
@@ -1231,7 +1227,7 @@ def test() -> None:
 
     foils = list()
 
-    if 'NACA' == '':
+    if 'NACA' != '':
         parameters = {
             'relative_thickness': 0.2,
             'x_relative_camber': 0.3,
