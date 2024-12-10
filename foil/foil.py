@@ -505,6 +505,17 @@ class Foil:
     def chord(self) -> float:
         return self.__chord
 
+    def center_pressure(self, x:float, relative:bool=False) -> tuple[float, float]:
+        """Координата центра давления"""
+        assert isinstance(x, (float, np.floating))
+        assert 0 < x < 1
+
+        # autofit
+        upper = self.function_upper(1, relative=relative)
+        lower = self.function_lower(1, relative=relative)
+
+        return x, (upper(x) + lower(x)) / 2
+
     def xy(self) -> tuple[tuple[float, ...], tuple[float, ...]]:
         """Координаты x и y аэродинамического профиля считая от выходной кромки против часовой стрелки"""
         if 0 < len(self.__x) and 0 < len(self.__y): return self.__x, self.__y
@@ -516,6 +527,7 @@ class Foil:
                        relative:bool=False) -> interpolate.interp1d:
         """Функция спинки аэродинамического профиля"""
         assert isinstance(kind, int) and 1 <= kind <= 3
+        assert isinstance(relative, bool)
         coordinates = self.relative_coordinates if relative else self.coordinates
         upper = self.upper_lower(coordinates)['upper']
         return interpolate.interp1d(*array(upper, dtype='float64').T, kind=kind, fill_value=fill_value)
@@ -524,6 +536,7 @@ class Foil:
                        relative:bool=False) -> interpolate.interp1d:
         """Функция корыта аэродинамического профиля"""
         assert isinstance(kind, int) and 1 <= kind <= 3
+        assert isinstance(relative, bool)
         coordinates = self.relative_coordinates if relative else self.coordinates
         lower = self.upper_lower(coordinates)['lower']
         return interpolate.interp1d(*array(lower, dtype='float64').T, kind=kind, fill_value=fill_value)
@@ -1220,6 +1233,7 @@ class Foil:
         plt.streamplot(X, Y, ux, uy,
                        color=(0, 0, 1, 0.5), density=1.5, minlength=0.1, linewidth=0.8, broken_streamlines=True)
         plt.plot(x, y, color='black', linewidth=2, label='foil')
+        plt.scatter(*self.center_pressure(0.3), color='red', marker='*')
         plt.axis('equal')
         plt.legend(fontsize=12)
         plt.tight_layout()
