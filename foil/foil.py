@@ -505,7 +505,7 @@ class Foil:
     def chord(self) -> float:
         return self.__chord
 
-    def center_pressure(self, x:float, relative:bool=False) -> tuple[float, float]:
+    def center_pressure(self, x: float, relative: bool = False) -> tuple[float, float]:
         """Координата центра давления"""
         assert isinstance(x, (float, np.floating))
         assert 0 < x < 1
@@ -514,7 +514,7 @@ class Foil:
         upper = self.function_upper(1, relative=relative)
         lower = self.function_lower(1, relative=relative)
 
-        return x, (upper(x) + lower(x)) / 2
+        return float(x), float((upper(x) + lower(x)) / 2)
 
     def xy(self) -> tuple[tuple[float, ...], tuple[float, ...]]:
         """Координаты x и y аэродинамического профиля считая от выходной кромки против часовой стрелки"""
@@ -523,8 +523,8 @@ class Foil:
         self.__x, self.__y = tuple([float(x) for x in X]), tuple([float(y) for y in Y])
         return self.__x, self.__y
 
-    def function_upper(self, kind: int, fill_value: str = 'extrapolate', 
-                       relative:bool=False) -> interpolate.interp1d:
+    def function_upper(self, kind: int, fill_value: str = 'extrapolate',
+                       relative: bool = False) -> interpolate.interp1d:
         """Функция спинки аэродинамического профиля"""
         assert isinstance(kind, int) and 1 <= kind <= 3
         assert isinstance(relative, bool)
@@ -532,8 +532,8 @@ class Foil:
         upper = self.upper_lower(coordinates)['upper']
         return interpolate.interp1d(*array(upper, dtype='float64').T, kind=kind, fill_value=fill_value)
 
-    def function_lower(self, kind: int, fill_value: str = 'extrapolate', 
-                       relative:bool=False) -> interpolate.interp1d:
+    def function_lower(self, kind: int, fill_value: str = 'extrapolate',
+                       relative: bool = False) -> interpolate.interp1d:
         """Функция корыта аэродинамического профиля"""
         assert isinstance(kind, int) and 1 <= kind <= 3
         assert isinstance(relative, bool)
@@ -555,7 +555,7 @@ class Foil:
             xargmin, xargmax = np.argmin(X), np.argmax(X)
             angle = atan((Y[xargmax] - Y[xargmin]) / (X[xargmax] - X[xargmin]))  # угол поворота
             installation_angle -= angle  # - т.к. мы идем в сторону уменьшения угла к горизонтали
-            coordinates = cls.transform(tuple(((x, y) for x, y in zip(X, Y))), angle=angle)  # поворот
+            coordinates = cls.transform(coordinates, angle=angle)  # поворот
 
         return Foil('MANUAL', discreteness, installation_angle=installation_angle, name=name,
                     points=coordinates, deg=deg)
@@ -574,7 +574,7 @@ class Foil:
         elif extension == 'xlsx':
             points = pd.read_excel(path, header=header)
         else:
-            raise Exception(f'extension "{extension}" is not found')
+            raise ValueError(f'extension "{extension}" is not found')
 
         return Foil('MANUAL', name=name, points=points)
 
@@ -601,7 +601,7 @@ class Foil:
             coordinates.to_excel(f'datas/foil_coordinates_{ctime}.{extension}', index=index, header=header)
             properties.to_excel(f'datas/foil_properties_{ctime}.{extension}', index=index, header=header)
         else:
-            raise Exception(f'extension "{extension}" is not found')
+            raise ValueError(f'extension "{extension}" is not found')
 
     def __naca(self, discreteness: int,
                relative_thickness, x_relative_camber, relative_camber, closed: bool) -> tuple[tuple[float, float], ...]:
@@ -687,7 +687,7 @@ class Foil:
         for place, point in zip(('upper', 'lower'), (cl_u, cl_d)):
             if isnan(point).any(): raise LinesIntersectionError(f'{place} intersection')
 
-        AA = lambda A: -1 / A if A != 0 else -inf # Коэффициент A перпендикуляра прямой
+        AA = lambda A: -1 / A if A != 0 else -inf  # Коэффициент A перпендикуляра прямой
 
         # точки пересечения окружностей со спинкой и корытом
         clc_i_u = coordinate_intersection_lines(
@@ -703,11 +703,11 @@ class Foil:
             (A(k_outlet, +g_d_outlet), B, C(A(k_outlet, +g_d_outlet), -relative_outlet_radius, O_outlet)),
             (AA(A(k_outlet, +g_d_outlet)), B, -AA(A(k_outlet, +g_d_outlet)) * O_outlet[0] - B * O_outlet[1]))
 
-        for place, point in zip(('upper inlet', 'lower inlet', 'upper outlet', 'lower outlet'), 
+        for place, point in zip(('upper inlet', 'lower inlet', 'upper outlet', 'lower outlet'),
                                 (clc_i_u, clc_i_d, clc_e_u, clc_e_d)):
             if isnan(point).any(): raise LinesIntersectionError(f'{place} intersection')
 
-        x, y = list(), list()   
+        x, y = list(), list()
 
         # окружность выходной кромки спинки
         an = angle_between(points=((1, O_outlet[1]), O_outlet, clc_e_u))
@@ -982,11 +982,8 @@ class Foil:
     def transform(coordinates: tuple[tuple[float, float], ...],
                   x0=0.0, y0=0.0, angle=0.0, scale=1.0) -> tuple[tuple[float, float], ...]:
         """Перенос-поворот-масштабирование кривых спинки и корыта профиля"""
-        new_coordinates = list()
-        for x, y in coordinates:
-            point = Axis.transform(x, y, x0=x0, y0=y0, angle=angle, scale=scale)
-            new_coordinates.append((float(point[0]), float(point[1])))
-        return tuple(new_coordinates)
+        coordinates = Axis.transform(array(coordinates), x0=x0, y0=y0, angle=angle, scale=scale)
+        return tuple((float(x), float(y)) for x, y in coordinates)
 
     @staticmethod
     def upper_lower(coordinates: tuple[tuple[float, float], ...]) -> dict[str:tuple[tuple[float, float], ...]]:
@@ -1038,7 +1035,11 @@ class Foil:
         fg.add_subplot(gs[1, 0])
         plt.title('Properties')
         plt.axis('off')
-        for key, value in self.properties.items(): plt.plot([], label=f'{key} = {value:.{precision}f}')
+        for key, value in self.properties.items():
+            if isinstance(value, (int, float, np.number)):
+                plt.plot([], label=f'{key} = {value:.{precision}f}')
+            else:
+                raise TypeError(f'{value}')
         plt.legend(loc='upper center')
 
         fg.add_subplot(gs[0, 1])
@@ -1085,49 +1086,69 @@ class Foil:
         limit = int(ceil(1 / epsrel))  # предел дискретизации точек интегрирования
         fu, fl = self.function_upper(3), self.function_lower(3)
 
-        self.__properties['area'] = integrate.dblquad(lambda _, __: 1,
-                                                      0, 1, lambda xu: fl(xu), lambda xl: fu(xl),
-                                                      epsrel=epsrel)[0]
+        # длины спинки и корыта
+        len_upper = integrate.quad(lambda x: sqrt(1 + derivative(fu, x) ** 2),
+                                   0, 1, epsrel=epsrel, limit=limit)[0]
+        len_lower = integrate.quad(lambda x: sqrt(1 + derivative(fl, x) ** 2),
+                                   0, 1, epsrel=epsrel, limit=limit)[0]
+
         x = linspace(0, 1, int(ceil(1 / epsrel)), endpoint=True)
         delta_f = fu(x) - fl(x)
         delta_f_2 = delta_f / 2
         argmax_c, argmax_f = np.argmax(delta_f), np.argmax(np.abs(delta_f_2))
-        self.__properties['xc'], self.__properties['c'] = x[argmax_c], delta_f[argmax_c]
-        self.__properties['xf'], self.__properties['f'] = x[argmax_f], delta_f_2[argmax_f]  # TODO неверно!
-        self.__properties['Sx'] = integrate.dblquad(lambda y, _: y,
-                                                    0, 1, lambda xu: fl(xu), lambda xd: fu(xd),
-                                                    epsrel=epsrel)[0]
-        self.__properties['Sy'] = integrate.dblquad(lambda _, x: x,
-                                                    0, 1, lambda xu: fl(xu), lambda xd: fu(xd),
-                                                    epsrel=epsrel)[0]
-        self.__properties['x0'] = self.__properties['Sy'] / self.__properties['area'] \
-            if self.__properties['area'] != 0 else inf
-        self.__properties['y0'] = self.__properties['Sx'] / self.__properties['area'] \
-            if self.__properties['area'] != 0 else inf
-        self.__properties['Jx'] = integrate.dblquad(lambda y, _: y ** 2,
-                                                    0, 1, lambda xu: fl(xu), lambda xd: fu(xd),
-                                                    epsrel=epsrel)[0]
-        self.__properties['Jy'] = integrate.dblquad(lambda _, x: x ** 2,
-                                                    0, 1, lambda xu: fl(xu), lambda xd: fu(xd),
-                                                    epsrel=epsrel)[0]
-        self.__properties['Jxy'] = integrate.dblquad(lambda y, x: x * y,
-                                                     0, 1, lambda xu: fl(xu), lambda xd: fu(xd),
-                                                     epsrel=epsrel)[0]
-        self.__properties['Jxc'] = self.__properties['Jx'] - self.__properties['area'] * self.__properties['y0'] ** 2
-        self.__properties['Jyc'] = self.__properties['Jy'] - self.__properties['area'] * self.__properties['x0'] ** 2
-        self.__properties['Jxcyc'] = (self.__properties['Jxy'] -
-                                      self.__properties['area'] * self.__properties['x0'] * self.__properties['y0'])
-        self.__properties['Jp'] = self.__properties['Jxc'] + self.__properties['Jyc']
-        self.__properties['Wp'] = self.__properties['Jp'] / max(
-            sqrt((0 - self.__properties['x0']) ** 2 + (0 - self.__properties['y0']) ** 2),
-            sqrt((1 - self.__properties['x0']) ** 2 + (0 - self.__properties['y0']) ** 2))
-        self.__properties['alpha'] = 0.5 * atan(-2 * self.__properties['Jxcyc'] /
-                                                (self.__properties['Jxc'] - self.__properties['Jyc'])) \
-            if (self.__properties['Jxc'] - self.__properties['Jyc']) != 0 else -pi / 4
-        self.__properties['len_u'] = integrate.quad(lambda x: sqrt(1 + derivative(fu, x) ** 2),
-                                                    0, 1, epsrel=epsrel, limit=limit)[0]
-        self.__properties['len_l'] = integrate.quad(lambda x: sqrt(1 + derivative(fl, x) ** 2),
-                                                    0, 1, epsrel=epsrel, limit=limit)[0]
+        xc, c = x[argmax_c], delta_f[argmax_c]  # координата max толщины и max толщина
+        xf, f = x[argmax_f], delta_f_2[argmax_f]  # TODO неверно!
+        del delta_f, delta_f_2, argmax_c, argmax_f
+
+        # площадь профиля
+        area = integrate.dblquad(lambda _, __: 1,
+                                 0, 1, lambda xu: fl(xu), lambda xl: fu(xl),
+                                 epsrel=epsrel)[0]
+
+        # статические моменты инерции
+        sx = integrate.dblquad(lambda y, _: y,
+                               0, 1, lambda xu: fl(xu), lambda xd: fu(xd),
+                               epsrel=epsrel)[0]
+        sy = integrate.dblquad(lambda _, x: x,
+                               0, 1, lambda xu: fl(xu), lambda xd: fu(xd),
+                               epsrel=epsrel)[0]
+
+        x0 = sy / area if area != 0 else inf
+        y0 = sx / area if area != 0 else inf
+        point0 = x0, y0
+
+        jx = integrate.dblquad(lambda y, _: y ** 2,
+                               0, 1, lambda xu: fl(xu), lambda xd: fu(xd),
+                               epsrel=epsrel)[0]
+        jy = integrate.dblquad(lambda _, x: x ** 2,
+                               0, 1, lambda xu: fl(xu), lambda xd: fu(xd),
+                               epsrel=epsrel)[0]
+        jxy = integrate.dblquad(lambda y, x: x * y,
+                                0, 1, lambda xu: fl(xu), lambda xd: fu(xd),
+                                epsrel=epsrel)[0]
+
+        jx0 = jx - area * y0 ** 2
+        jy0 = jy - area * x0 ** 2
+        jxy0 = jxy - area * x0 * y0
+
+        jp = jx0 + jy0
+        wp = jp / max(sqrt((0 - x0) ** 2 + (0 - y0) ** 2),  # расстояние до входной кромки
+                      sqrt((1 - x0) ** 2 + (0 - y0) ** 2))  # расстояние до выходной кромки
+
+        # угол поворота главных центральных осей u и v
+        major_angle = 0.5 * atan(2 * jxy0 / (jy0 - jx0)) if (jy0 - jx0) != 0 else -pi / 4
+
+        # моменты инерции относительно главных центральных осей
+        jx_major = jx0 * cos(major_angle) ** 2 + jy0 * sin(major_angle) ** 2 - 2 * jxy0 * sin(2 * major_angle)
+        jy_major = jx0 * sin(major_angle) ** 2 + jy0 * cos(major_angle) ** 2 + 2 * jxy0 * sin(2 * major_angle)
+
+        self.__properties = {'len_upper': len_upper, 'len_lower': len_lower,
+                             'xf': xf, 'f': f, 'xc': xc, 'c': c,
+                             'area': area, 'sx': sx, 'sy': sy, 'x0': x0, 'y0': y0,
+                             'jx': jx, 'jy': jy, 'jxy': jxy, 'jx0': jx0, 'jy0': jy0, 'jxy0': jxy0,
+                             'jp': jp, 'wp': wp, 'major_angle': major_angle,
+                             'jx_major': jx_major, 'jy_major': jy_major, }
+
         return self.__properties
 
     @property
@@ -1138,7 +1159,7 @@ class Foil:
         fu, fl = self.function_upper(3), self.function_lower(3)
 
         Fu = lambda x: fu(x) - self.__relative_step
-        step = self.properties['len_l'] / self.discreteness  # шаг вдоль кривой
+        step = self.properties['len_lower'] / self.discreteness  # шаг вдоль кривой
 
         xgmin, xgmax = 0, 1
 
