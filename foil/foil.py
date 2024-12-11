@@ -1084,20 +1084,20 @@ class Foil:
         if self.__properties: return self.__properties
 
         limit = int(ceil(1 / epsrel))  # предел дискретизации точек интегрирования
-        fu, fl = self.function_upper(3), self.function_lower(3)
+        fu, fl = self.function_upper(1), self.function_lower(1)  # 1 for safety
 
         # длины спинки и корыта
-        len_upper = integrate.quad(lambda x: sqrt(1 + derivative(fu, x) ** 2),
-                                   0, 1, epsrel=epsrel, limit=limit)[0]
-        len_lower = integrate.quad(lambda x: sqrt(1 + derivative(fl, x) ** 2),
-                                   0, 1, epsrel=epsrel, limit=limit)[0]
+        length_upper = integrate.quad(lambda x: sqrt(1 + derivative(fu, x) ** 2),
+                                      0, 1, epsrel=epsrel, limit=limit)[0]
+        length_lower = integrate.quad(lambda x: sqrt(1 + derivative(fl, x) ** 2),
+                                      0, 1, epsrel=epsrel, limit=limit)[0]
 
         x = linspace(0, 1, int(ceil(1 / epsrel)), endpoint=True)
         delta_f = fu(x) - fl(x)
         delta_f_2 = delta_f / 2
         argmax_c, argmax_f = np.argmax(delta_f), np.argmax(np.abs(delta_f_2))
         xc, c = x[argmax_c], delta_f[argmax_c]  # координата max толщины и max толщина
-        xf, f = x[argmax_f], delta_f_2[argmax_f]  # TODO неверно!
+        xf, f = x[argmax_f], delta_f_2[argmax_f]
         del delta_f, delta_f_2, argmax_c, argmax_f
 
         # площадь профиля
@@ -1142,7 +1142,7 @@ class Foil:
         jx_major = jx0 * cos(major_angle) ** 2 + jy0 * sin(major_angle) ** 2 - 2 * jxy0 * sin(2 * major_angle)
         jy_major = jx0 * sin(major_angle) ** 2 + jy0 * cos(major_angle) ** 2 + 2 * jxy0 * sin(2 * major_angle)
 
-        self.__properties = {'len_upper': len_upper, 'len_lower': len_lower,
+        self.__properties = {'length_upper': length_upper, 'length_lower': length_lower,
                              'xf': xf, 'f': f, 'xc': xc, 'c': c,
                              'area': area, 'sx': sx, 'sy': sy, 'x0': x0, 'y0': y0,
                              'jx': jx, 'jy': jy, 'jxy': jxy, 'jx0': jx0, 'jy0': jy0, 'jxy0': jxy0,
