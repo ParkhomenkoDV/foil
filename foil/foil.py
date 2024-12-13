@@ -695,7 +695,7 @@ class Foil:
 
         scale = abs(X.max() - X.min())
 
-        return self.transform(tuple(((x, y) for x, y in zip(X, Y))), x0=X.min(), scale=(1 / scale))
+        return self.transform(tuple(((x, y) for x, y in zip(X, Y))), transfer=(X.min(), 0), scale=(1 / scale))
 
     def __bmstu(self, discreteness: int,
                 rotation_angle,
