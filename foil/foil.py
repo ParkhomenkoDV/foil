@@ -376,7 +376,8 @@ class Foil:
                  # необязательные параметры
                  '__discreteness', '__chord', '__installation_angle', '__step', '__start_point', '__name',
                  '__parameters',  # псевдо необязательный параметр
-                 '__relative_coordinates', '__coordinates', '__x', '__y',
+                 '__relative_coordinates', '__coordinates',
+                 '__relative_x', '__relative_y', '__x', '__y',
                  '__relative_properties', '__properties',
                  '__channel')
 
@@ -507,6 +508,17 @@ class Foil:
     def start_point(self) -> tuple[float, float]:
         return self.__start_point
 
+    @start_point.setter
+    def start_point(self, value) -> None:
+        self.validate(start_point=value)
+        self.__start_point = tuple(float(value[0]), float(value[1]))
+        self.reset()
+
+    @start_point.deleter
+    def start_point(self) -> None:
+        self.__start_point = Foil.__START_POINT
+        self.reset()
+
     @property
     def name(self) -> str:
         return self.__name
@@ -545,40 +557,48 @@ class Foil:
         """Координата центра давления"""
         assert isinstance(x, (float, np.floating))
         assert 0 < x < 1
+        assert isinstance(relative, bool)
 
-        # autofit
-        upper, lower = self.function_upper(1, relative=True), self.function_lower(1, relative=True)
+        upper, lower = self.function_upper(1, relative=True), self.function_lower(1, relative=True)  # autofit
 
         x, y = x, (upper(x) + lower(x)) / 2
         if not relative:
-            x, y = Foil.transform(((x, y),), angle=self.installation_angle, scale=self.chord)[0]
+            x, y = Foil.transform(((x, y),),
+                                  transfer=self.start_point, angle=self.installation_angle, scale=self.chord)[0]
 
         return float(x), float(y)
 
-    def xy(self) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    def xy(self, relative: bool = False, dtype: str = 'float64') -> tuple[tuple[float, ...], tuple[float, ...]]:
         """Координаты x и y аэродинамического профиля считая от выходной кромки против часовой стрелки"""
+        if 0 < len(self.__relative_x) and 0 < len(self.__relative_y): return self.__relative_x, self.__relative_y
         if 0 < len(self.__x) and 0 < len(self.__y): return self.__x, self.__y
-        X, Y = array(self.coordinates, dtype='float64').T
-        self.__x, self.__y = tuple([float(x) for x in X]), tuple([float(y) for y in Y])
-        return self.__x, self.__y
+
+        if relative:
+            X, Y = array(self.relative_coordinates, dtype=dtype).T
+            self.__relative_x, self.__relative_y = tuple([float(x) for x in X]), tuple([float(y) for y in Y])
+            return self.__relative_x, self.__relative_y
+        else:
+            X, Y = array(self.coordinates, dtype=dtype).T
+            self.__x, self.__y = tuple([float(x) for x in X]), tuple([float(y) for y in Y])
+            return self.__x, self.__y
 
     def function_upper(self, kind: int, fill_value: str = 'extrapolate',
-                       relative: bool = False) -> interpolate.interp1d:
+                       relative: bool = False, dtype='float64') -> interpolate.interp1d:
         """Функция спинки аэродинамического профиля"""
         assert isinstance(kind, int) and 1 <= kind <= 3
         assert isinstance(relative, bool)
         coordinates = self.relative_coordinates if relative else self.coordinates
         upper = self.upper_lower(coordinates)['upper']
-        return interpolate.interp1d(*array(upper, dtype='float64').T, kind=kind, fill_value=fill_value)
+        return interpolate.interp1d(*array(upper, dtype=dtype).T, kind=kind, fill_value=fill_value)
 
     def function_lower(self, kind: int, fill_value: str = 'extrapolate',
-                       relative: bool = False) -> interpolate.interp1d:
+                       relative: bool = False, dtype='float64') -> interpolate.interp1d:
         """Функция корыта аэродинамического профиля"""
         assert isinstance(kind, int) and 1 <= kind <= 3
         assert isinstance(relative, bool)
         coordinates = self.relative_coordinates if relative else self.coordinates
         lower = self.upper_lower(coordinates)['lower']
-        return interpolate.interp1d(*array(lower, dtype='float64').T, kind=kind, fill_value=fill_value)
+        return interpolate.interp1d(*array(lower, dtype=dtype).T, kind=kind, fill_value=fill_value)
 
     @classmethod
     def load(cls, points, deg: int, discreteness: int = __DISCRETENESS,
@@ -615,20 +635,24 @@ class Foil:
         else:
             raise ValueError(f'extension "{extension}" is not found')
 
-        return Foil('MANUAL', name=name, points=points)
+        return Foil('MANUAL', name=name, points=points.to_numpy())
 
-    def to_dataframe(self) -> pd.DataFrame:
+    def to_dataframe(self, relative: bool = False) -> pd.DataFrame:
         """Перевод координат в pandas.DataFrame"""
-        return pd.DataFrame(self.coordinates, columns=('x', 'y'))
+        if relative:
+            return pd.DataFrame(self.coordinates, columns=('x', 'y'))
+        else:
+            return pd.DataFrame(self.relative_coordinates, columns=('x', 'y'))
 
-    def write(self, extension: str, index: bool = False, header: bool = True) -> None:
+    def write(self, extension: str, index: bool = False, header: bool = True, relative: bool = False) -> None:
         """Экспортирование координат и характеристик профиля"""
         assert isinstance(extension, str)
         extension = extension.strip().lower().replace('.', '')
 
         if not os.path.isdir('datas'): os.mkdir('datas')
         ctime = time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime())
-        coordinates, properties = self.to_dataframe(), pd.DataFrame(self.properties, index=[0])
+        coordinates = self.to_dataframe(relative=relative)
+        properties = pd.DataFrame(self.properties(relative=relative), index=[0])
 
         if extension == 'pkl':
             coordinates.to_pickle(f'datas/foil_coordinates_{ctime}.{extension}', index=index, header=header)
@@ -815,7 +839,7 @@ class Foil:
 
         coordinates = self.transform(tuple(((x, y) for x, y in zip(X, Y))), angle=angle)  # поворот
         x, _ = array(coordinates).T
-        return self.transform(coordinates, x0=x.min(), scale=(1 / (x.max() - x.min())))  # нормализация
+        return self.transform(coordinates, transfer=(x.min(), 0), scale=(1 / (x.max() - x.min())))  # нормализация
 
     def __parsec(self, discreteness: int,
                  relative_inlet_radius,
@@ -887,7 +911,8 @@ class Foil:
         angle = atan((Y[xargmax] - Y[xargmin]) / (X[xargmax] - X[xargmin]))  # угол поворота
         coordinates = self.transform(tuple(((x, y) for x, y in zip(X, Y))), angle=angle)  # поворот
         x, y = array(coordinates).T
-        coordinates = self.transform(coordinates, x0=x.min(), y0=y[0], scale=(1 / (x.max() - x.min())))  # нормализация
+        coordinates = self.transform(coordinates,
+                                     transfer=(x.min(), y[0]), scale=(1 / (x.max() - x.min())))  # нормализация
         return coordinates
 
     def __manual(self, discreteness: int,
@@ -896,7 +921,7 @@ class Foil:
         x, y = array(coordinates).T
         self.__chord = x.max() - x.min()
         coordinates = self.transform(coordinates,
-                                     x0=x.min(), y0=y[np.argmin(x)], scale=(1 / self.__chord))  # нормализация
+                                     transfer=(x.min(), y[np.argmin(x)]), scale=(1 / self.__chord))  # нормализация
 
         upper_lower = self.upper_lower(coordinates)
         (xu, yu), (xl, yl) = array(upper_lower['upper']).T, array(upper_lower['lower']).T
@@ -977,16 +1002,16 @@ class Foil:
         xu, yu, xl, yl = xu[upper_mask], yu[upper_mask], xl[lower_mask], yl[lower_mask]
 
         if not is_airfoil:
-            yu -= self.relative_step  # перенос спинки вниз
+            yu -= self.step  # перенос спинки вниз
             yu, yl, xu, xl = yl, yu, xl, xu  # правильное обозначение
 
         X = np.hstack([[1], xu[::-1], [0], xl, [1]])
         Y = np.hstack([[0], yu[::-1], [0], yl, [0]]) if is_airfoil \
-            else np.hstack([[- self.relative_step / 2],
+            else np.hstack([[- self.step / 2],
                             yu[::-1],
-                            [- self.relative_step / 2],
+                            [- self.step / 2],
                             yl,
-                            [- self.relative_step / 2]])
+                            [- self.step / 2]])
 
         return tuple((x, y) for x, y in zip(X, Y))
 
@@ -1014,7 +1039,8 @@ class Foil:
         self.__coordinates = self.transform(self.__relative_coordinates, angle=self.__installation_angle)  # поворот
         coordinates = array(self.__coordinates, dtype='float64').T
         x_min, x_max = coordinates[0].min(), coordinates[0].max()
-        self.__coordinates = self.transform(self.__coordinates, x0=x_min, scale=(1 / (x_max - x_min)))  # нормализация
+        self.__coordinates = self.transform(self.__coordinates,
+                                            transfer=(x_min, 0), scale=(1 / (x_max - x_min)))  # нормализация
         return self.__coordinates
 
     @staticmethod
@@ -1199,7 +1225,7 @@ class Foil:
 
         fu, fl = self.function_upper(3), self.function_lower(3)
 
-        Fu = lambda x: fu(x) - self.__relative_step
+        Fu = lambda x: fu(x) - self.__step
         step = self.properties()['length_lower'] / self.discreteness  # шаг вдоль кривой
 
         xgmin, xgmax = 0, 1
@@ -1230,14 +1256,14 @@ class Foil:
         warnings.filterwarnings('error')
         for xu, yu, a_u, c_u in tqdm(zip(x, fl(x), Au, Cu), desc='Channel calculation', total=len(x)):
             try:
-                res = fsolve(equations, array((xu, yu, self.__relative_step / 2, xu)), args=(xu, yu, a_u, c_u))
+                res = fsolve(equations, array((xu, yu, self.__step / 2, xu)), args=(xu, yu, a_u, c_u))
             except Exception as exception:
                 continue
 
             if all((xgmin <= res[0] <= xgmax,
                     Fu(res[0]) < res[1] < fl(res[0]),  # y центра окружности лежит в канале
                     xgmin <= res[3] <= xgmax,
-                    res[2] * 2 <= self.relative_step)):
+                    res[2] * 2 <= self.step)):
                 xd.append(res[0])
                 yd.append(res[1])
                 d.append(res[2] * 2)
@@ -1415,7 +1441,7 @@ def test() -> None:
         foil = Foil('NACA', 40, 1, radians(20),
                     relative_thickness=0.1, x_relative_camber=0.3, relative_camber=0, closed=True)
         coordinates = foil.transform(foil.coordinates,
-                                     x0=foil.properties()['x0'], y0=foil.properties()['y0'], scale=5)
+                                     transfer=(foil.properties()['x0'], foil.properties()['y0']), scale=5)
         foil = Foil.load(coordinates, deg=1, discreteness=80, name='Load')
         foils.append(foil)
 
