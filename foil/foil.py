@@ -254,26 +254,6 @@ VOCABULARY = MappingProxyType({
         'type': (int, float, np.number),
         'assert': (lambda theta_outlet_lower:
                    '' if -pi / 2 < theta_outlet_lower < pi / 2 else f'{-pi / 2} < theta_outlet_lower < {pi / 2}',), },
-    'points': {
-        'description': 'координаты точек или полюсов',
-        'unit': '[]',
-        'type': (tuple, list, np.ndarray),
-        'assert': (lambda points: '' if 3 <= len(points) else '3 <= len(points)',
-                   lambda points: '' if all(isinstance(coord, (tuple, list, np.ndarray)) for coord in points)
-                   else 'all(isinstance(coord, (tuple, list, np.ndarray)) for coord in points)',
-                   lambda points: '' if all(len(coord) == 2 for coord in points)
-                   else 'all(len(coord) == 2 for coord in points)',
-                   lambda points:
-                   '' if all(isinstance(x, (int, float, np.number)) and isinstance(y, (int, float, np.number))
-                             for x, y in points)
-                   else 'all(isinstance(x, (int, float, np.number)) and isinstance(y, (int, float, np.number)) '
-                        'for x, y in points)',
-                   # lambda points: # при загрузке повернутого профиля локальных argmin может быть несколько
-                   # '' if all(points[i][0] > points[i + 1][0] for i in range(0, np.argmin(array(points).T[0]))) and
-                   #      all(points[i][0] < points[i + 1][0] for i in
-                   #          range(np.argmin(array(points).T[0]), len(points) - 1))
-                   # else 'duplicates ascending error',
-                   ), },
     'deg': {
         'description': 'степень интерполяции полинома',
         'unit': '[]',
@@ -341,10 +321,10 @@ METHODS = MappingProxyType({
     'BEZIER': {'description': 'профиль, построенный по кривой Безье',
                'aliases': ('BEZIER', 'БЕЗЬЕ'),
                'attributes': {
-                   'points': VOCABULARY['points'], }},
+                   'coordinates': VOCABULARY['coordinates'], }},
     'MANUAL': {'description': 'профиль, образованный интерполяцией точек спинки и корыта',
                'attributes': {
-                   'points': VOCABULARY['points'],
+                   'coordinates': VOCABULARY['coordinates'],
                    'deg': VOCABULARY['deg'], }},
     'CIRCLE': {'description': 'профиль, образованный интерполяцией точек канала профильной решетки',
                'attributes': {
@@ -432,9 +412,10 @@ class Foil:
 
     def reset(self):
         """Сброс расчетов"""
-        self.__relative_coordinates = tuple()  # относительные координаты профиля без поворота
-        self.__coordinates = tuple()  # относительные координаты профиля считая против часовой стрелки с выходной кромки
-        self.__x, self.__y = tuple(), tuple()  # относительные координты x и y профиля
+        self.__relative_coordinates = tuple()  # относительные координаты профиля без переноса-поворота-масштабирования
+        self.__coordinates = tuple()  # абсолютные координаты профиля считая против часовой стрелки с выходной кромки
+        self.__relative_x, self.__relative_y = tuple(), tuple()  # относительные координаты x и y профиля
+        self.__x, self.__y = tuple(), tuple()  # абсолютные координаты x и y профиля
         self.__relative_properties, self.__properties = dict(), dict()  # относ. и абс. характеристики профиля
         self.__channel = tuple()  # дифузорность/конфузорность решетки
 
@@ -492,14 +473,14 @@ class Foil:
         return self.__step
 
     @step.setter
-    def step(self, value):
+    def step(self, value) -> None:
         self.validate(step=value)
         self.__step = float(value)
         self.__properties = dict()  # относительные характеристики профиля
         self.__channel = dict()  # дифузорность/конфузорность решетки
 
     @step.deleter
-    def step(self):
+    def step(self) -> None:
         self.__step = Foil.__STEP
         self.__properties = dict()  # относительные характеристики профиля
         self.__channel = dict()  # дифузорность/конфузорность решетки
@@ -537,7 +518,7 @@ class Foil:
         return self.__parameters
 
     @parameters.setter
-    def parameters(self, value: dict):
+    def parameters(self, value: dict) -> None:
         self.validate(method=self.method, parameters=value)
         self.__parameters = value
         self.reset()
@@ -601,26 +582,28 @@ class Foil:
         return interpolate.interp1d(*array(lower, dtype=dtype).T, kind=kind, fill_value=fill_value)
 
     @classmethod
-    def load(cls, points, deg: int, discreteness: int = __DISCRETENESS,
+    def load(cls, coordinates, deg: int, discreteness: int = __DISCRETENESS,
              name: str = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())) -> object:
         """Загрузка координат профиля"""
         cls.validate(method='MANUAL', discreteness=discreteness, name=name,
-                     parameters={'points': points, 'deg': deg})
+                     parameters={'coordinates': coordinates, 'deg': deg})
 
         installation_angle = 0  # расчет угла установки
-        coordinates = array(points, dtype='float64')
-        for _ in range(3):  # 3 раза для однозначности поворота
+        while True:
             X, Y = array(coordinates, dtype='float64').T
             xargmin, xargmax = np.argmin(X), np.argmax(X)
             angle = atan((Y[xargmax] - Y[xargmin]) / (X[xargmax] - X[xargmin]))  # угол поворота
+            if angle == 0: break  # хорда достигла горизонтальное положение
             installation_angle -= angle  # - т.к. мы идем в сторону уменьшения угла к горизонтали
             coordinates = cls.transform(coordinates, angle=angle)  # поворот
+        X, _ = array(coordinates, dtype='float64').T
+        chord = X.max() - X.min()
 
-        return Foil('MANUAL', discreteness, installation_angle=installation_angle, name=name,
-                    points=coordinates, deg=deg)
+        return Foil('MANUAL', discreteness, chord=chord, installation_angle=installation_angle, name=name,
+                    coordinates=coordinates, deg=deg)
 
     @classmethod
-    def read(cls, path: str, header: bool = True) -> object:
+    def read(cls, path: str, header: bool = True, deg: int = 1) -> object:
         """Считывание координат профиля из файла"""
         assert os.path.isfile(path), f'file "{path}" does not exist'
         name, extension = os.path.splitext(path)
@@ -635,7 +618,21 @@ class Foil:
         else:
             raise ValueError(f'extension "{extension}" is not found')
 
-        return Foil('MANUAL', name=name, points=points.to_numpy())
+        coordinates = points.to_numpy()
+
+        installation_angle = 0  # расчет угла установки
+        while True:
+            X, Y = array(coordinates, dtype='float64').T
+            xargmin, xargmax = np.argmin(X), np.argmax(X)
+            angle = atan((Y[xargmax] - Y[xargmin]) / (X[xargmax] - X[xargmin]))  # угол поворота
+            if angle == 0: break  # хорда достигла горизонтальное положение
+            installation_angle -= angle  # - т.к. мы идем в сторону уменьшения угла к горизонтали
+            coordinates = cls.transform(coordinates, angle=angle)  # поворот
+        X, _ = array(coordinates, dtype='float64').T
+        chord = X.max() - X.min()
+
+        return Foil('MANUAL', coordinates.shape[0], chord=chord, installation_angle=installation_angle, name=name,
+                    coordinates=coordinates, deg=deg)
 
     def to_dataframe(self, relative: bool = False) -> pd.DataFrame:
         """Перевод координат в pandas.DataFrame"""
@@ -644,27 +641,30 @@ class Foil:
         else:
             return pd.DataFrame(self.relative_coordinates, columns=('x', 'y'))
 
-    def write(self, extension: str, index: bool = False, header: bool = True, relative: bool = False) -> None:
+    def write(self, extension: str, folder: str = 'foil_datas',
+              index: bool = False, header: bool = True,
+              relative: bool = False) -> None:
         """Экспортирование координат и характеристик профиля"""
         assert isinstance(extension, str)
         extension = extension.strip().lower().replace('.', '')
 
-        if not os.path.isdir('datas'): os.mkdir('datas')
-        ctime = time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime())
-        coordinates = self.to_dataframe(relative=relative)
-        properties = pd.DataFrame(self.properties(relative=relative), index=[0])
+        if not os.path.isdir(folder): os.mkdir(folder)
 
-        if extension == 'pkl':
-            coordinates.to_pickle(f'datas/foil_coordinates_{ctime}.{extension}', index=index, header=header)
-            properties.to_pickle(f'datas/foil_properties_{ctime}.{extension}', index=index, header=header)
-        elif extension in ('csv', 'txt'):
-            coordinates.to_csv(f'datas/foil_coordinates_{ctime}.{extension}', index=index, header=header)
-            properties.to_csv(f'datas/foil_properties_{ctime}.{extension}', index=index, header=header)
-        elif extension == 'xlsx':
-            coordinates.to_excel(f'datas/foil_coordinates_{ctime}.{extension}', index=index, header=header)
-            properties.to_excel(f'datas/foil_properties_{ctime}.{extension}', index=index, header=header)
-        else:
-            raise ValueError(f'extension "{extension}" is not found')
+        ctime = time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime())
+        is_relative = 'relative_' if relative else ''
+
+        datas = {'coordinates': self.to_dataframe(relative=relative),
+                 'properties': pd.DataFrame(self.properties(relative=relative), index=[0])}
+
+        for name, data in datas.items():
+            if extension == 'pkl':
+                data.to_pickle(f'datas/foil_{is_relative}{name}_{ctime}.{extension}', index=index, header=header)
+            elif extension in ('csv', 'txt'):
+                data.to_csv(f'datas/foil_{is_relative}{name}_{ctime}.{extension}', index=index, header=header)
+            elif extension == 'xlsx':
+                data.to_excel(f'datas/foil_{is_relative}{name}_{ctime}.{extension}', index=index, header=header)
+            else:
+                raise ValueError(f'extension "{extension}" is not found')
 
     def __naca(self, discreteness: int,
                relative_thickness, x_relative_camber, relative_camber, closed: bool) -> tuple[tuple[float, float], ...]:
@@ -905,8 +905,8 @@ class Foil:
         return tuple((x, y) for x, y in zip(X, Y))
 
     def __bezier(self, discreteness: int,
-                 points) -> tuple[tuple[float, float], ...]:
-        X, Y = bernstein_curve(points, N=discreteness).T
+                 coordinates) -> tuple[tuple[float, float], ...]:
+        X, Y = bernstein_curve(coordinates, N=discreteness).T
         xargmin, xargmax = np.argmin(X), np.argmax(X)
         angle = atan((Y[xargmax] - Y[xargmin]) / (X[xargmax] - X[xargmin]))  # угол поворота
         coordinates = self.transform(tuple(((x, y) for x, y in zip(X, Y))), angle=angle)  # поворот
@@ -916,9 +916,9 @@ class Foil:
         return coordinates
 
     def __manual(self, discreteness: int,
-                 points, deg: int) -> tuple[tuple[float, float], ...]:
-        coordinates = array(points, dtype='float64')
-        x, y = array(coordinates).T
+                 coordinates, deg: int) -> tuple[tuple[float, float], ...]:
+        coordinates = array(coordinates, dtype='float64')
+        x, y = coordinates.T
         self.__chord = x.max() - x.min()
         coordinates = self.transform(coordinates,
                                      transfer=(x.min(), y[np.argmin(x)]), scale=(1 / self.__chord))  # нормализация
@@ -929,7 +929,7 @@ class Foil:
         fl = interpolate.interp1d(xl, yl, kind=deg, fill_value='extrapolate')
         epsrel = 0.000_1
         limit = int(ceil(1 / epsrel))  # предел дискретизации точек интегрирования
-        coordinates = list()
+        coordinates_ = list()
         for f, is_upper in zip((fu, fl), (True, False)):
             l = integrate.quad(lambda x: sqrt(1 + derivative(f, x) ** 2), 0, 1, epsrel=epsrel, limit=limit)[0]
             step = l / discreteness
@@ -940,11 +940,11 @@ class Foil:
                 x.append(X)
             X = array(x + [1], dtype='float64')
             if is_upper:
-                coordinates += [(x, y) for x, y in zip(X[::-1], f(X[::-1]))]
+                coordinates_ += [(x, y) for x, y in zip(X[::-1], f(X[::-1]))]
             else:
-                coordinates += [(x, y) for x, y in zip(X[1::], fl(X[1::]))]
+                coordinates_ += [(x, y) for x, y in zip(X[1::], fl(X[1::]))]
 
-        return tuple(coordinates)
+        return tuple(coordinates_)
 
     def __circle(self, discreteness: int,
                  relative_circles, rotation_angle, x_ray_cross, is_airfoil) -> tuple[tuple[float, float], ...]:
@@ -1015,7 +1015,7 @@ class Foil:
 
         return tuple((x, y) for x, y in zip(X, Y))
 
-    def __fit(self) -> tuple[tuple[float, float], ...]:
+    def __fit(self) -> None:
         """Профилирование"""
         if self.method == 'NACA':
             self.__relative_coordinates = self.__naca(self.discreteness, **self.parameters)
@@ -1032,19 +1032,15 @@ class Foil:
         elif self.method == 'CIRCLE':
             self.__relative_coordinates = self.__circle(self.discreteness, **self.parameters)
         else:
-            print(Fore.RED + f'No such method {self.method}! Use Airfoil.help' + Fore.RESET)
+            raise ValueError(f'No such method {self.method}')
 
-        if self.__chord is None: self.__chord = 1  # длина хорды = 1, если ранее не было посчитано
-
-        self.__coordinates = self.transform(self.__relative_coordinates, angle=self.__installation_angle)  # поворот
-        coordinates = array(self.__coordinates, dtype='float64').T
-        x_min, x_max = coordinates[0].min(), coordinates[0].max()
-        self.__coordinates = self.transform(self.__coordinates,
-                                            transfer=(x_min, 0), scale=(1 / (x_max - x_min)))  # нормализация
-        return self.__coordinates
+        self.__coordinates = self.transform(self.__relative_coordinates,
+                                            transfer=self.start_point,
+                                            angle=self.__installation_angle,
+                                            scale=self.chord)
 
     @staticmethod
-    def transform(coordinates: tuple[tuple[float, float], ...],
+    def transform(coordinates: tuple[tuple[float, float], ...] | np.ndarray,
                   transfer: tuple[float, float] = (0, 0),
                   angle: float = 0.0, scale: float = 1.0) -> tuple[tuple[float, float], ...]:
         """Перенос-поворот-масштабирование кривых спинки и корыта профиля"""
@@ -1075,7 +1071,7 @@ class Foil:
         assert isinstance(savefig, bool)
 
         X, Y = array(self.coordinates, dtype='float32').T  # запуск расчета
-        coordinates0 = self.upper_lower(self.__relative_coordinates)
+        relative_coordinates = self.upper_lower(self.__relative_coordinates)
         x, y, d, r = self.channel.T
 
         fg = plt.figure(figsize=figsize)
@@ -1087,10 +1083,12 @@ class Foil:
         plt.axis('off')
         plt.plot([], label=f'method = {self.method}')
         plt.plot([], label=f'discreteness = {self.discreteness}')
+        plt.plot([], label=f'chord = {self.chord}')
         plt.plot([], label=f'installation_angle'
                            f' = {self.installation_angle:.{precision}f} [rad]'
                            f' = {degrees(self.installation_angle):.{precision}f} [deg]')
         plt.plot([], label=f'step = {self.step:.{precision}f} []')
+        plt.plot([], label=f'start_point = ({self.start_point[0]:.{precision}f}, {self.start_point[1]:.{precision}f})')
 
         for key, value in self.parameters.items():
             if isinstance(value, (int, np.integer, bool)):
@@ -1110,12 +1108,12 @@ class Foil:
         plt.legend(loc='upper center')
 
         fg.add_subplot(gs[0, 1])
-        plt.title('Airfoil structure')
+        plt.title('Foil')
         plt.grid(True)  # сетка
         plt.axis('equal')
         plt.xlim([0, 1])
-        plt.plot(*array(coordinates0['upper'], dtype='float16').T, ls='solid', color='blue', linewidth=2)
-        plt.plot(*array(coordinates0['lower'], dtype='float16').T, ls='solid', color='red', linewidth=2)
+        plt.plot(*array(relative_coordinates['upper'], dtype='float16').T, ls='solid', color='blue', linewidth=2)
+        plt.plot(*array(relative_coordinates['lower'], dtype='float16').T, ls='solid', color='red', linewidth=2)
 
         fg.add_subplot(gs[1, 1])
         plt.title('Channel')
@@ -1146,12 +1144,14 @@ class Foil:
         if savefig: plt.savefig(f'pictures/airfoil_{self.name}.png')
         plt.show()
 
-    def properties(self, relative: bool = False, epsrel: float = 1e-4) -> dict[str: float]:
+    def properties(self, relative: bool = False, epsrel: float = 1e-4, deg: int = 1) -> dict[str: float]:
         if relative and self.__relative_properties: return self.__relative_properties
         if not relative and self.__properties: return self.__properties
 
         limit = int(ceil(1 / epsrel))  # предел дискретизации точек интегрирования
-        fu, fl = self.function_upper(1), self.function_lower(1)  # 1 for safety
+        fu, fl = self.function_upper(deg, relative=relative), self.function_lower(deg, relative=relative)
+
+        chord = 1 if relative else self.chord
 
         # длины спинки и корыта
         length_upper = integrate.quad(lambda x: sqrt(1 + derivative(fu, x) ** 2),
@@ -1209,26 +1209,35 @@ class Foil:
         jx_major = jx0 * cos(major_angle) ** 2 + jy0 * sin(major_angle) ** 2 - 2 * jxy0 * sin(2 * major_angle)
         jy_major = jx0 * sin(major_angle) ** 2 + jy0 * cos(major_angle) ** 2 + 2 * jxy0 * sin(2 * major_angle)
 
-        self.__properties = {'length_upper': length_upper, 'length_lower': length_lower,
-                             'xf': xf, 'f': f, 'xc': xc, 'c': c,
-                             'area': area, 'sx': sx, 'sy': sy, 'x0': x0, 'y0': y0,
-                             'jx': jx, 'jy': jy, 'jxy': jxy, 'jx0': jx0, 'jy0': jy0, 'jxy0': jxy0,
-                             'jp': jp, 'wp': wp, 'major_angle': major_angle,
-                             'jx_major': jx_major, 'jy_major': jy_major, }
+        properties = {'chord': chord, 'length_upper': length_upper, 'length_lower': length_lower,
+                      'xf': xf, 'f': f, 'xc': xc, 'c': c,
+                      'area': area, 'sx': sx, 'sy': sy, 'x0': x0, 'y0': y0,
+                      'jx': jx, 'jy': jy, 'jxy': jxy, 'jx0': jx0, 'jy0': jy0, 'jxy0': jxy0,
+                      'jp': jp, 'wp': wp, 'major_angle': major_angle,
+                      'jx_major': jx_major, 'jy_major': jy_major, }
 
-        return self.__properties
+        if relative:
+            self.__relative_properties = properties
+        else:
+            self.__properties = properties
+
+        return properties
 
     @property
     def channel(self) -> np.ndarray:
         """Диффузорность/конфузорность решетки"""
         if len(self.__channel) > 1: return self.__channel
 
-        fu, fl = self.function_upper(3), self.function_lower(3)
+        fu, fl = self.function_upper(3, relative=False), self.function_lower(3, relative=False)
+        Fu = lambda x: fu(x) - self.step  # спинка нижнего профиля
 
-        Fu = lambda x: fu(x) - self.__step
-        step = self.properties()['length_lower'] / self.discreteness  # шаг вдоль кривой
+        step = self.properties(relative=False)['length_lower'] / self.discreteness  # шаг вдоль кривой
 
-        xgmin, xgmax = 0, 1
+        X, Y = array(self.coordinates, dtype='float64').T
+
+        xgmin, xgmax = X.min(), X.max()
+
+        breakpoint(ё)
 
         x = [xgmin]
         while True:
@@ -1387,18 +1396,18 @@ def test() -> None:
                           **parameters))
 
     if 'BEZIER' != '':
-        parameters = {'points': ((1.0, 0.0), (0.35, 0.200), (0.05, 0.100),
-                                 (0.0, 0.0),
-                                 (0.05, -0.10), (0.35, -0.05), (0.5, 0.0), (1.0, 0.0)), }
+        parameters = {'coordinates': ((1.0, 0.0), (0.35, 0.200), (0.05, 0.100),
+                                      (0.0, 0.0),
+                                      (0.05, -0.10), (0.35, -0.05), (0.5, 0.0), (1.0, 0.0)), }
 
         foils.append(Foil('BEZIER', 30,
                           chord=0.8, installation_angle=radians(46.23), step=0.6, name='BEZIER',
                           **parameters))
 
     if 'MANUAL' != '':
-        parameters = {'points': ((1.0, 0.0), (0.5, 0.15), (0.35, 0.150), (0.10, 0.110), (0.05, 0.08),
-                                 (0.0, 0.0),
-                                 (0.05, -0.025), (0.35, -0.025), (0.5, 0.0), (0.8, 0.025), (1.0, 0.0)),
+        parameters = {'coordinates': ((1.0, 0.0), (0.5, 0.15), (0.35, 0.150), (0.10, 0.110), (0.05, 0.08),
+                                      (0.0, 0.0),
+                                      (0.05, -0.025), (0.35, -0.025), (0.5, 0.0), (0.8, 0.025), (1.0, 0.0)),
                       'deg': 3, }
 
         foils.append(Foil('MANUAL', 30,
@@ -1448,19 +1457,20 @@ def test() -> None:
     for foil in foils:
         foil.show()
 
-        print(foil.to_dataframe())
-
         for relative in (True, False):
+            print(foil.to_dataframe(relative=relative))
+
             print(Fore.MAGENTA + 'foil properties:' + Fore.RESET)
             for k, v in foil.properties(relative=relative).items():
                 print(f'{k}: {v}')
+
+            for extension in ('txt', 'csv', 'xlsx', 'pkl'):
+                foil.write(extension, relative=relative)
 
         print(Fore.MAGENTA + 'foil channel:' + Fore.RESET)
         print(f'{foil.channel}')
 
         foil.cfd(10, 5)
-
-        foil.write('txt')
 
 
 if __name__ == '__main__':
