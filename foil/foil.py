@@ -2,7 +2,6 @@ import os
 import sys
 import time
 from types import MappingProxyType  # неизменяемый словарь
-import warnings
 from functools import lru_cache
 
 from tqdm import tqdm
@@ -11,7 +10,7 @@ import pandas as pd
 import numpy as np
 from numpy import array, arange, linspace, zeros, full, zeros_like, full_like
 from numpy import nan, isnan, inf, isinf, pi
-from numpy import cos, sin, tan, arctan as atan, sqrt, floor, ceil, radians, degrees
+from numpy import cos, sin, tan, arctan as atan, sqrt, radians, degrees
 from scipy import interpolate, integrate
 from scipy.optimize import fsolve
 import matplotlib.pyplot as plt
@@ -25,6 +24,8 @@ HERE = os.path.dirname(__file__)  # TODO
 sys.path.append(HERE)
 
 from curves import bernstein_curve
+
+fsolve = warns('error')(fsolve)  # raise errors for try-except
 
 # Список использованной литературы
 REFERENCES = MappingProxyType({
@@ -657,12 +658,13 @@ class Foil:
                  'properties': pd.DataFrame(self.properties(relative=relative), index=[0])}
 
         for name, data in datas.items():
+            path = f'{folder}/foil_{is_relative}{name}_{ctime}.{extension}'
             if extension == 'pkl':
-                data.to_pickle(f'datas/foil_{is_relative}{name}_{ctime}.{extension}', index=index, header=header)
+                data.to_pickle(path)
             elif extension in ('csv', 'txt'):
-                data.to_csv(f'datas/foil_{is_relative}{name}_{ctime}.{extension}', index=index, header=header)
+                data.to_csv(path, index=index, header=header)
             elif extension == 'xlsx':
-                data.to_excel(f'datas/foil_{is_relative}{name}_{ctime}.{extension}', index=index, header=header)
+                data.to_excel(path, index=index, header=header)
             else:
                 raise ValueError(f'extension "{extension}" is not found')
 
@@ -684,7 +686,7 @@ class Foil:
 
         coefs = array((0.2969, -0.126, -0.3516, 0.2843, -0.1036 if closed else -0.1015), dtype='float64')
 
-        yc = relative_thickness / 0.2 * np.dot(coefs, np.column_stack((sqrt(x), x, x ** 2, x ** 3, x ** 4)).T)
+        yc = relative_thickness / 0.2 * np.dot(coefs, np.column_stack((x ** 0.5, x, x ** 2, x ** 3, x ** 4)).T)
 
         tetta = atan(gradYf)
 
@@ -928,7 +930,7 @@ class Foil:
         fu = interpolate.interp1d(xu, yu, kind=deg, fill_value='extrapolate')
         fl = interpolate.interp1d(xl, yl, kind=deg, fill_value='extrapolate')
         epsrel = 0.000_1
-        limit = int(ceil(1 / epsrel))  # предел дискретизации точек интегрирования
+        limit = int(1 / epsrel) + 1  # предел дискретизации точек интегрирования
         coordinates_ = list()
         for f, is_upper in zip((fu, fl), (True, False)):
             l = integrate.quad(lambda x: sqrt(1 + derivative(f, x) ** 2), 0, 1, epsrel=epsrel, limit=limit)[0]
@@ -1071,7 +1073,7 @@ class Foil:
         assert isinstance(savefig, bool)
 
         X, Y = array(self.coordinates, dtype='float32').T  # запуск расчета
-        relative_coordinates = self.upper_lower(self.__relative_coordinates)
+        relative_coordinates = self.upper_lower(self.relative_coordinates)
         x, y, d, r = self.channel.T
 
         fg = plt.figure(figsize=figsize)
@@ -1111,7 +1113,6 @@ class Foil:
         plt.title('Foil')
         plt.grid(True)  # сетка
         plt.axis('equal')
-        plt.xlim([0, 1])
         plt.plot(*array(relative_coordinates['upper'], dtype='float16').T, ls='solid', color='blue', linewidth=2)
         plt.plot(*array(relative_coordinates['lower'], dtype='float16').T, ls='solid', color='red', linewidth=2)
 
@@ -1121,18 +1122,16 @@ class Foil:
         plt.ylim([-self.step / 2, self.step / 2])
         plt.plot(r, d / 2, ls='solid', color='green', label='channel')
         plt.plot(r, -d / 2, ls='solid', color='green')
-        plt.plot([0, max(r)], [0, 0], ls='dashdot', color='orange', linewidth=1.5)
+        # plt.plot([0, max(r)], [0, 0], ls='dashdot', color='orange', linewidth=1.5)
         plt.plot((r[:-1] + r[1:]) / 2, np.diff(d) / np.diff(r), ls='solid', color='red', label='df/dx')
-        plt.axis('equal')  # square
         plt.legend(fontsize=12)
 
         fg.add_subplot(gs[:, 2])
         plt.title('Lattice')
         plt.grid(True)
         plt.axis('equal')  # xlim не нужен ввиду эквивалентности
-        plt.xlim([0, 1])
-        plt.plot((0, 0), (np.max(Y), np.min(Y) - (amount - 1) * self.step),
-                 (1, 1), (np.max(Y), np.min(Y) - (amount - 1) * self.step),
+        plt.plot((X.min(), X.min()), (np.max(Y), np.min(Y) - (amount - 1) * self.step),
+                 (X.max(), X.max()), (np.max(Y), np.min(Y) - (amount - 1) * self.step),
                  ls='solid', color='black')  # границы решетки
         for n in range(amount): plt.plot(X, Y - n * self.step, ls='solid', color='black', linewidth=2)
         alpha = linspace(0, 2 * pi, 360, dtype='float16')
@@ -1144,22 +1143,24 @@ class Foil:
         if savefig: plt.savefig(f'pictures/airfoil_{self.name}.png')
         plt.show()
 
-    def properties(self, relative: bool = False, epsrel: float = 1e-4, deg: int = 1) -> dict[str: float]:
+    def properties(self, relative: bool = False, epsrel: float = 1e-4, deg: int = 3) -> dict[str: float]:
         if relative and self.__relative_properties: return self.__relative_properties
         if not relative and self.__properties: return self.__properties
 
-        limit = int(ceil(1 / epsrel))  # предел дискретизации точек интегрирования
+        limit = int(1 / epsrel) + 1  # предел дискретизации точек интегрирования
         fu, fl = self.function_upper(deg, relative=relative), self.function_lower(deg, relative=relative)
+        x, _ = array(self.relative_coordinates).T if relative else array(self.coordinates).T
+        a, b = x.min(), x.max()  # пределы интегрирования
 
         chord = 1 if relative else self.chord
 
         # длины спинки и корыта
         length_upper = integrate.quad(lambda x: sqrt(1 + derivative(fu, x) ** 2),
-                                      0, 1, epsrel=epsrel, limit=limit)[0]
+                                      a, b, epsrel=epsrel, limit=limit)[0]
         length_lower = integrate.quad(lambda x: sqrt(1 + derivative(fl, x) ** 2),
-                                      0, 1, epsrel=epsrel, limit=limit)[0]
+                                      a, b, epsrel=epsrel, limit=limit)[0]
 
-        x = linspace(0, 1, int(ceil(1 / epsrel)), endpoint=True)
+        x = linspace(0, 1, int(1 / epsrel) + 1, endpoint=True)
         delta_f = fu(x) - fl(x)
         delta_f_2 = delta_f / 2
         argmax_c, argmax_f = np.argmax(delta_f), np.argmax(np.abs(delta_f_2))
@@ -1169,38 +1170,36 @@ class Foil:
 
         # площадь профиля
         area = integrate.dblquad(lambda _, __: 1,
-                                 0, 1, lambda xu: fl(xu), lambda xl: fu(xl),
+                                 a, b, lambda xu: fl(xu), lambda xl: fu(xl),
                                  epsrel=epsrel)[0]
 
         # статические моменты инерции
         sx = integrate.dblquad(lambda y, _: y,
-                               0, 1, lambda xu: fl(xu), lambda xd: fu(xd),
+                               a, b, lambda xu: fl(xu), lambda xd: fu(xd),
                                epsrel=epsrel)[0]
         sy = integrate.dblquad(lambda _, x: x,
-                               0, 1, lambda xu: fl(xu), lambda xd: fu(xd),
+                               a, b, lambda xu: fl(xu), lambda xd: fu(xd),
                                epsrel=epsrel)[0]
 
         x0 = sy / area if area != 0 else inf
         y0 = sx / area if area != 0 else inf
-        point0 = x0, y0
 
         jx = integrate.dblquad(lambda y, _: y ** 2,
-                               0, 1, lambda xu: fl(xu), lambda xd: fu(xd),
+                               a, b, lambda xu: fl(xu), lambda xd: fu(xd),
                                epsrel=epsrel)[0]
         jy = integrate.dblquad(lambda _, x: x ** 2,
-                               0, 1, lambda xu: fl(xu), lambda xd: fu(xd),
+                               a, b, lambda xu: fl(xu), lambda xd: fu(xd),
                                epsrel=epsrel)[0]
         jxy = integrate.dblquad(lambda y, x: x * y,
-                                0, 1, lambda xu: fl(xu), lambda xd: fu(xd),
+                                a, b, lambda xu: fl(xu), lambda xd: fu(xd),
                                 epsrel=epsrel)[0]
 
-        jx0 = jx - area * y0 ** 2
-        jy0 = jy - area * x0 ** 2
+        jx0, jy0 = jx - area * y0 ** 2, jy - area * x0 ** 2
         jxy0 = jxy - area * x0 * y0
 
         jp = jx0 + jy0
-        wp = jp / max(sqrt((0 - x0) ** 2 + (0 - y0) ** 2),  # расстояние до входной кромки
-                      sqrt((1 - x0) ** 2 + (0 - y0) ** 2))  # расстояние до выходной кромки
+        wp = jp / max(sqrt((a - x0) ** 2 + (0 - y0) ** 2),  # расстояние до входной кромки
+                      sqrt((b - x0) ** 2 + (0 - y0) ** 2))  # расстояние до выходной кромки
 
         # угол поворота главных центральных осей u и v
         major_angle = 0.5 * atan(2 * jxy0 / (jy0 - jx0)) if (jy0 - jx0) != 0 else -pi / 4
@@ -1229,22 +1228,20 @@ class Foil:
         if len(self.__channel) > 1: return self.__channel
 
         fu, fl = self.function_upper(3, relative=False), self.function_lower(3, relative=False)
-        Fu = lambda x: fu(x) - self.step  # спинка нижнего профиля
+        fu_ = lambda x: fu(x) - self.step  # спинка нижнего профиля
 
-        step = self.properties(relative=False)['length_lower'] / self.discreteness  # шаг вдоль кривой
+        step = self.properties(relative=False)['length_lower'] / self.discreteness  # min шаг вдоль короткой кривой
 
         X, Y = array(self.coordinates, dtype='float64').T
 
         xgmin, xgmax = X.min(), X.max()
 
-        breakpoint(ё)
-
-        x = [xgmin]
+        x = array((xgmin,), dtype='float64')
         while True:
             X = x[-1] + step * tan2cos(derivative(fl, x[-1]))
-            if X > xgmax: break
-            x.append(X)
-        x = array(x + [xgmax], dtype='float64')
+            if X >= xgmax: break
+            x = np.append(x, X)
+        x = np.append(x, xgmax)
 
         Au, _, Cu = coefficients_line(func=fl, x0=x)
 
@@ -1253,30 +1250,28 @@ class Foil:
             x0, y0, r0, xl = vars
             xu, yu, Au, Cu = args
 
-            Al, _, Cl = coefficients_line(func=Fu, x0=xl)
+            Al, _, Cl = coefficients_line(func=fu_, x0=xl)
 
-            return [abs(Au * x0 + (-1) * y0 + Cu) / sqrt(Au ** 2 + 1) - r0,  # расстояние от точки окружности
+            return (abs(Au * x0 + (-1) * y0 + Cu) / sqrt(Au ** 2 + 1) - r0,  # расстояние от точки окружности
                     ((xu - x0) ** 2 + (yu - y0) ** 2) - r0 ** 2,  # до кривой корыта
                     abs(Al * x0 + (-1) * y0 + Cl) / sqrt(Al ** 2 + 1) - r0,  # расстояние от точки окружности
-                    ((xl - x0) ** 2 + (Fu(xl) - y0) ** 2) - r0 ** 2]  # до кривой спинки
+                    ((xl - x0) ** 2 + (fu_(xl) - y0) ** 2) - r0 ** 2)  # до кривой спинки
 
         xd, yd, d = list(), list(), list()
 
-        warnings.filterwarnings('error')
         for xu, yu, a_u, c_u in tqdm(zip(x, fl(x), Au, Cu), desc='Channel calculation', total=len(x)):
             try:
                 res = fsolve(equations, array((xu, yu, self.__step / 2, xu)), args=(xu, yu, a_u, c_u))
             except Exception as exception:
                 continue
 
-            if all((xgmin <= res[0] <= xgmax,
-                    Fu(res[0]) < res[1] < fl(res[0]),  # y центра окружности лежит в канале
-                    xgmin <= res[3] <= xgmax,
-                    res[2] * 2 <= self.step)):
+            if all((xgmin <= res[0] <= xgmax,  # x центра окружности лежит в канале
+                    fu_(res[0]) < res[1] < fl(res[0]),  # y центра окружности лежит в канале
+                    res[2] * 2 <= self.step,  # диаметр окружности не превышает ширину канала
+                    xgmin <= res[3] <= xgmax)):
                 xd.append(res[0])
                 yd.append(res[1])
                 d.append(res[2] * 2)
-        warnings.filterwarnings('default')
 
         r = zeros(len(d), dtype='float64')
         for i in range(1, len(d)): r[i] = r[i - 1] + distance((xd[i - 1], yd[i - 1]), (xd[i], yd[i]))
@@ -1348,7 +1343,7 @@ class Foil:
         plt.show()
 
 
-def test() -> None:
+def main() -> None:
     """Тестирование"""
 
     foils = list()
@@ -1361,7 +1356,7 @@ def test() -> None:
             'closed': True, }
 
         foils.append(Foil('NACA', 40,
-                          chord=0.1, installation_angle=radians(46.23), step=0.6, name='NACA',
+                          chord=0.1, installation_angle=radians(30), step=0.06, name='NACA',
                           **parameters))
 
     if 'BMSTU' != '':
@@ -1373,14 +1368,14 @@ def test() -> None:
             'upper_proximity': 0.5, }
 
         foils.append(Foil('BMSTU', 30,
-                          chord=0.05, installation_angle=radians(46.23), step=0.6, name='BMSTU',
+                          chord=0.05, installation_angle=radians(30), step=0.06, name='BMSTU',
                           **parameters))
 
     if 'MYNK' != '':
         parameters = {'mynk_coefficient': 0.2, }
 
         foils.append(Foil('MYNK', 20,
-                          chord=0.25, installation_angle=radians(46.23), step=0.6, name='MYNK',
+                          chord=0.25, installation_angle=radians(30), step=0.6, name='MYNK',
                           **parameters))
 
     if 'PARSEC' != '':
@@ -1392,7 +1387,7 @@ def test() -> None:
             'theta_outlet_upper': radians(-6), 'theta_outlet_lower': radians(3), }
 
         foils.append(Foil('PARSEC', 50,
-                          chord=0.06, installation_angle=radians(46.23), step=0.6, name='PARSEC',
+                          chord=0.06, installation_angle=radians(30), step=0.06, name='PARSEC',
                           **parameters))
 
     if 'BEZIER' != '':
@@ -1401,7 +1396,7 @@ def test() -> None:
                                       (0.05, -0.10), (0.35, -0.05), (0.5, 0.0), (1.0, 0.0)), }
 
         foils.append(Foil('BEZIER', 30,
-                          chord=0.8, installation_angle=radians(46.23), step=0.6, name='BEZIER',
+                          chord=0.8, installation_angle=radians(30), step=0.6, name='BEZIER',
                           **parameters))
 
     if 'MANUAL' != '':
@@ -1411,7 +1406,7 @@ def test() -> None:
                       'deg': 3, }
 
         foils.append(Foil('MANUAL', 30,
-                          chord=1.2, installation_angle=radians(46.23), step=0.6, name='MANUAL',
+                          chord=1.2, installation_angle=radians(30), step=0.6, name='MANUAL',
                           **parameters))
 
     if 'CIRCLE' != '':
@@ -1443,11 +1438,11 @@ def test() -> None:
                       'is_airfoil': False, }
 
         foils.append(Foil('CIRCLE', 60,
-                          chord=0.03, installation_angle=radians(30), step=0.6, name='CIRCLE',
+                          chord=0.03, installation_angle=radians(30), step=0.06, name='CIRCLE',
                           **parameters))
 
     if 'Load' != '':
-        foil = Foil('NACA', 40, 1, radians(20),
+        foil = Foil('NACA', 40, 1, radians(30),
                     relative_thickness=0.1, x_relative_camber=0.3, relative_camber=0, closed=True)
         coordinates = foil.transform(foil.coordinates,
                                      transfer=(foil.properties()['x0'], foil.properties()['y0']), scale=5)
@@ -1461,8 +1456,8 @@ def test() -> None:
             print(foil.to_dataframe(relative=relative))
 
             print(Fore.MAGENTA + 'foil properties:' + Fore.RESET)
-            for k, v in foil.properties(relative=relative).items():
-                print(f'{k}: {v}')
+            for key, value in foil.properties(relative=relative).items():
+                print(f'{key}: {value}')
 
             for extension in ('txt', 'csv', 'xlsx', 'pkl'):
                 foil.write(extension, relative=relative)
@@ -1470,10 +1465,10 @@ def test() -> None:
         print(Fore.MAGENTA + 'foil channel:' + Fore.RESET)
         print(f'{foil.channel}')
 
-        foil.cfd(10, 5)
+        # foil.cfd(10, 5)
 
 
 if __name__ == '__main__':
     import cProfile
 
-    cProfile.run('test()', sort='cumtime')
+    cProfile.run('main()', sort='cumtime')
