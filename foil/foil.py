@@ -25,8 +25,6 @@ sys.path.append(HERE)
 
 from curves import bernstein_curve
 
-fsolve = warns('error')(fsolve)  # raise errors for try-except
-
 # Список использованной литературы
 REFERENCES = MappingProxyType({
     1: '''Теория и проектирование газовой турбины: учебное пособие /
@@ -1122,7 +1120,7 @@ class Foil:
         plt.ylim([-self.step / 2, self.step / 2])
         plt.plot(r, d / 2, ls='solid', color='green', label='channel')
         plt.plot(r, -d / 2, ls='solid', color='green')
-        # plt.plot([0, max(r)], [0, 0], ls='dashdot', color='orange', linewidth=1.5)
+        plt.plot([0, max(r)], [0, 0], ls='dashdot', color='orange', linewidth=1.5)
         plt.plot((r[:-1] + r[1:]) / 2, np.diff(d) / np.diff(r), ls='solid', color='red', label='df/dx')
         plt.legend(fontsize=12)
 
@@ -1221,6 +1219,7 @@ class Foil:
         return properties
 
     @property
+    @warns('error')
     def channel(self) -> np.ndarray:
         """Диффузорность/конфузорность решетки"""
         if len(self.__channel) > 1: return self.__channel
