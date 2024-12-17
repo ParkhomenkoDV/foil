@@ -1066,11 +1066,10 @@ class Foil:
         # if upper[-1][0] != 0: upper.append((0, ?)) # неизвестен y входной кромки
         return {'upper': tuple(upper[::-1]), 'lower': tuple(lower)}
 
-    def show(self, amount: int = 2, precision: int = 5, figsize=(12, 10), savefig: bool = False):
+    def plot(self, amount: int = 2, precision: int = 5, figsize=(12, 10)) -> plt:
         """Построение профиля"""
         assert isinstance(amount, int) and 1 <= amount  # количество профилей
         assert isinstance(precision, int) and 0 <= precision <= 8  # количество значащих цифр
-        assert isinstance(savefig, bool)
 
         X, Y = array(self.coordinates, dtype='float32').T  # запуск расчета
         relative_coordinates = self.upper_lower(self.relative_coordinates)
@@ -1079,6 +1078,7 @@ class Foil:
         fg = plt.figure(figsize=figsize)
         gs = fg.add_gridspec(nrows=2, ncols=3)
         plt.suptitle(self.name, fontsize=16, fontweight='bold')
+        plt.tight_layout()
 
         fg.add_subplot(gs[0, 0])
         plt.title('Initial data')
@@ -1139,9 +1139,7 @@ class Foil:
             plt.plot(list(d[i] / 2 * cos(alpha) + x[i]), list(d[i] / 2 * sin(alpha) + y[i]), ls='solid', color='green')
         plt.plot(x, y, ls='dashdot', color='orange')
 
-        plt.tight_layout()
-        if savefig: plt.savefig(f'pictures/airfoil_{self.name}.png')
-        plt.show()
+        return plt
 
     def properties(self, relative: bool = False, epsrel: float = 1e-4, deg: int = 3) -> dict[str: float]:
         if relative and self.__relative_properties: return self.__relative_properties
@@ -1450,7 +1448,7 @@ def main() -> None:
         foils.append(foil)
 
     for foil in foils:
-        foil.show()
+        foil.plot().show()
 
         for relative in (True, False):
             print(foil.to_dataframe(relative=relative))
