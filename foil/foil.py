@@ -275,7 +275,7 @@ VOCABULARY = MappingProxyType({
                         'for x, y in relative_circles)',
                    lambda relative_circles: '' if all(0 < x < 1 and 0 < y for x, y in relative_circles)
                    else 'all(0 < x < 1 and 0 < y for x, y in relative_circles)',), },
-    'is_airfoil': {
+    'is_foil': {
         'description': 'указатель на профиль',
         'unit': '[]',
         'type': (bool,),
@@ -330,7 +330,7 @@ METHODS = MappingProxyType({
                    'relative_circles': VOCABULARY['relative_circles'],
                    'rotation_angle': VOCABULARY['rotation_angle'],
                    'x_ray_cross': VOCABULARY['x_ray_cross'],
-                   'is_airfoil': VOCABULARY['is_airfoil'], }}, })
+                   'is_foil': VOCABULARY['is_foil'], }}, })
 
 
 class LinesIntersectionError(Exception):
@@ -416,7 +416,7 @@ class Foil:
         self.__relative_x, self.__relative_y = tuple(), tuple()  # относительные координаты x и y профиля
         self.__x, self.__y = tuple(), tuple()  # абсолютные координаты x и y профиля
         self.__relative_properties, self.__properties = dict(), dict()  # относ. и абс. характеристики профиля
-        self.__channel = tuple()  # дифузорность/конфузорность решетки
+        self.__channel = dict()  # дифузорность/конфузорность решетки
 
     @property
     def method(self) -> str:
@@ -581,10 +581,10 @@ class Foil:
         return interpolate.interp1d(*array(lower, dtype=dtype).T, kind=kind, fill_value=fill_value)
 
     @classmethod
-    def load(cls, coordinates, deg: int, discreteness: int = __DISCRETENESS,
+    def load(cls, coordinates, deg: int, discreteness: int = __DISCRETENESS, step: float = __STEP,
              name: str = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())) -> object:
         """Загрузка координат профиля"""
-        cls.validate(method='MANUAL', discreteness=discreteness, name=name,
+        cls.validate(method='MANUAL', discreteness=discreteness, step=step, name=name,
                      parameters={'coordinates': coordinates, 'deg': deg})
 
         installation_angle = 0  # расчет угла установки
@@ -598,7 +598,7 @@ class Foil:
         X, _ = array(coordinates, dtype='float64').T
         chord = X.max() - X.min()
 
-        return Foil('MANUAL', discreteness, chord=chord, installation_angle=installation_angle, name=name,
+        return Foil('MANUAL', discreteness, chord=chord, installation_angle=installation_angle, step=step, name=name,
                     coordinates=coordinates, deg=deg)
 
     @classmethod
@@ -947,7 +947,7 @@ class Foil:
         return tuple(coordinates_)
 
     def __circle(self, discreteness: int,
-                 relative_circles, rotation_angle, x_ray_cross, is_airfoil) -> tuple[tuple[float, float], ...]:
+                 relative_circles, rotation_angle, x_ray_cross, is_foil) -> tuple[tuple[float, float], ...]:
 
         y_ray_cross = fsolve(lambda y:
                              atan(x_ray_cross / y) + atan((1 - x_ray_cross) / y) - pi + rotation_angle,
@@ -963,7 +963,7 @@ class Foil:
 
         xc, dc = array(relative_circles, dtype='float64').T
 
-        if is_airfoil:
+        if is_foil:
             xc = np.insert(xc, 0, 0)  # профиль в отличие от канала должен быть замкнутым с концов
             dc = np.insert(dc, 0, 0)  # а для канала в точках х 0 и 1 неизвестны окружности
             xc = np.append(xc, 1)
@@ -1001,12 +1001,12 @@ class Foil:
         upper_mask, lower_mask = (0 < xu) & (xu < 1), (0 < xl) & (xl < 1)  # маска принадлежности к интервалу (0, 1)
         xu, yu, xl, yl = xu[upper_mask], yu[upper_mask], xl[lower_mask], yl[lower_mask]
 
-        if not is_airfoil:
+        if not is_foil:
             yu -= self.step  # перенос спинки вниз
             yu, yl, xu, xl = yl, yu, xl, xu  # правильное обозначение
 
         X = np.hstack([[1], xu[::-1], [0], xl, [1]])
-        Y = np.hstack([[0], yu[::-1], [0], yl, [0]]) if is_airfoil \
+        Y = np.hstack([[0], yu[::-1], [0], yl, [0]]) if is_foil \
             else np.hstack([[- self.step / 2],
                             yu[::-1],
                             [- self.step / 2],
@@ -1070,8 +1070,10 @@ class Foil:
         assert isinstance(precision, int) and 0 <= precision <= 8  # количество значащих цифр
 
         X, Y = array(self.coordinates, dtype='float32').T  # запуск расчета
-        relative_coordinates = self.upper_lower(self.relative_coordinates)
-        x, y, d, r = self.channel.T
+        relative_coordinates = self.upper_lower(self.relative_coordinates, )
+        channel = self.channel
+        x, y, d, r = array(channel['x']), array(channel['y']), array(channel['d']), array(channel['r'])
+        del channel
 
         fg = plt.figure(figsize=figsize)
         gs = fg.add_gridspec(nrows=2, ncols=3)
@@ -1120,7 +1122,7 @@ class Foil:
         plt.ylim([-self.step / 2, self.step / 2])
         plt.plot(r, d / 2, ls='solid', color='green', label='channel')
         plt.plot(r, -d / 2, ls='solid', color='green')
-        plt.plot([0, max(r)], [0, 0], ls='dashdot', color='orange', linewidth=1.5)
+        if len(r): plt.plot([0, max(r)], [0, 0], ls='dashdot', color='orange', linewidth=1.5)
         plt.plot((r[:-1] + r[1:]) / 2, np.diff(d) / np.diff(r), ls='solid', color='red', label='df/dx')
         plt.legend(fontsize=12)
 
@@ -1143,7 +1145,8 @@ class Foil:
         if relative and self.__relative_properties: return self.__relative_properties
         if not relative and self.__properties: return self.__properties
 
-        limit = int(1 / epsrel) + 1  # предел дискретизации точек интегрирования
+        limit: int = int(1 / epsrel) + 1  # предел дискретизации точек интегрирования
+        fur, flr = self.function_upper(deg, relative=True), self.function_lower(deg, relative=True)
         fu, fl = self.function_upper(deg, relative=relative), self.function_lower(deg, relative=relative)
         x, _ = array(self.relative_coordinates).T if relative else array(self.coordinates).T
         a, b = x.min(), x.max()  # пределы интегрирования
@@ -1157,12 +1160,13 @@ class Foil:
                                       a, b, epsrel=epsrel, limit=limit)[0]
 
         x = linspace(0, 1, int(1 / epsrel) + 1, endpoint=True)
-        delta_f = fu(x) - fl(x)
+        delta_f = fur(x) - flr(x)
         delta_f_2 = delta_f / 2
         argmax_c, argmax_f = np.argmax(delta_f), np.argmax(np.abs(delta_f_2))
         xc, c = x[argmax_c], delta_f[argmax_c]  # координата max толщины и max толщина
         xf, f = x[argmax_f], delta_f_2[argmax_f]
         del delta_f, delta_f_2, argmax_c, argmax_f
+        if not relative: xc, c, xf, f = xc * chord, c * chord, xf * chord, f * chord
 
         # площадь профиля
         area = integrate.dblquad(lambda _, __: 1,
@@ -1194,8 +1198,8 @@ class Foil:
         jxy0 = jxy - area * x0 * y0
 
         jp = jx0 + jy0
-        wp = jp / max(sqrt((a - x0) ** 2 + (0 - y0) ** 2),  # расстояние до входной кромки
-                      sqrt((b - x0) ** 2 + (0 - y0) ** 2))  # расстояние до выходной кромки
+        wp = jp / max(sqrt((a - x0) ** 2 + (fu(a) - y0) ** 2),  # расстояние до входной кромки
+                      sqrt((b - x0) ** 2 + (fl(b) - y0) ** 2))  # расстояние до выходной кромки
 
         # угол поворота главных центральных осей u и v
         major_angle = 0.5 * atan(2 * jxy0 / (jy0 - jx0)) if (jy0 - jx0) != 0 else -pi / 4
@@ -1220,9 +1224,9 @@ class Foil:
 
     @property
     @warns('error')
-    def channel(self) -> np.ndarray:
+    def channel(self) -> dict[str:tuple[float]]:
         """Диффузорность/конфузорность решетки"""
-        if len(self.__channel) > 1: return self.__channel
+        if self.__channel: return self.__channel
 
         fu, fl = self.function_upper(3, relative=False), self.function_lower(3, relative=False)
         fu_ = lambda x: fu(x) - self.step  # спинка нижнего профиля
@@ -1273,7 +1277,7 @@ class Foil:
         r = zeros(len(d), dtype='float64')
         for i in range(1, len(d)): r[i] = r[i - 1] + distance((xd[i - 1], yd[i - 1]), (xd[i], yd[i]))
 
-        self.__channel = array((xd, yd, d, r), dtype='float64').T
+        self.__channel = {'x': tuple(xd), 'y': tuple(yd), 'd': tuple(d), 'r': tuple(r)}
 
         return self.__channel
 
@@ -1365,23 +1369,23 @@ def main() -> None:
             'upper_proximity': 0.5, }
 
         foils.append(Foil('BMSTU', 30,
-                          chord=0.05, installation_angle=radians(30), step=0.06, name='BMSTU',
+                          chord=0.05, installation_angle=radians(30), step=0.03, name='BMSTU',
                           **parameters))
 
     if 'MYNK' != '':
         parameters = {'mynk_coefficient': 0.2, }
 
         foils.append(Foil('MYNK', 20,
-                          chord=0.25, installation_angle=radians(30), step=0.6, name='MYNK',
+                          chord=0.25, installation_angle=radians(30), step=0.2, name='MYNK',
                           **parameters))
 
     if 'PARSEC' != '':
         parameters = {
-            'relative_inlet_radius': 0.06,
-            'x_relative_camber_upper': 0.25, 'x_relative_camber_lower': 0.35,
-            'relative_camber_upper': 0.1, 'relative_camber_lower': -0.05,
-            'd2y_dx2_upper': -0.85, 'd2y_dx2_lower': -0.06,
-            'theta_outlet_upper': radians(-6), 'theta_outlet_lower': radians(3), }
+            'relative_inlet_radius': 0.01,
+            'x_relative_camber_upper': 0.35, 'x_relative_camber_lower': 0.45,
+            'relative_camber_upper': 0.055, 'relative_camber_lower': -0.006,
+            'd2y_dx2_upper': -0.35, 'd2y_dx2_lower': -0.2,
+            'theta_outlet_upper': radians(-10), 'theta_outlet_lower': radians(2), }
 
         foils.append(Foil('PARSEC', 50,
                           chord=0.06, installation_angle=radians(30), step=0.06, name='PARSEC',
@@ -1415,10 +1419,10 @@ def main() -> None:
                                            (0.6, 0.02),),
                       'rotation_angle': radians(40),
                       'x_ray_cross': 0.5,
-                      'is_airfoil': True, }
+                      'is_foil': True, }
 
         foils.append(Foil('CIRCLE', 60,
-                          chord=0.5, installation_angle=radians(30), step=0.6, name='CIRCLE',
+                          chord=0.5, installation_angle=radians(30), step=0.3, name='CIRCLE',
                           **parameters))
 
     if 'CIRCLE' != '':
@@ -1432,18 +1436,18 @@ def main() -> None:
                                            (0.9, 0.4),),
                       'rotation_angle': radians(40),
                       'x_ray_cross': 0.5,
-                      'is_airfoil': False, }
+                      'is_foil': False, }
 
         foils.append(Foil('CIRCLE', 60,
-                          chord=0.03, installation_angle=radians(30), step=0.06, name='CIRCLE',
+                          chord=0.6, installation_angle=radians(30), step=0.5, name='CIRCLE',
                           **parameters))
 
     if 'Load' != '':
-        foil = Foil('NACA', 40, 1, radians(30),
+        foil = Foil('NACA', 40, chord=1, installation_angle=radians(30), step=0.6,
                     relative_thickness=0.1, x_relative_camber=0.3, relative_camber=0, closed=True)
         coordinates = foil.transform(foil.coordinates,
                                      transfer=(foil.properties()['x0'], foil.properties()['y0']), scale=5)
-        foil = Foil.load(coordinates, deg=1, discreteness=80, name='Load')
+        foil = Foil.load(coordinates, deg=1, discreteness=80, step=3, name='Load')
         foils.append(foil)
 
     for foil in foils:
