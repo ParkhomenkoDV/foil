@@ -1086,10 +1086,8 @@ class Foil:
         plt.plot([], label=f'method = {self.method}')
         plt.plot([], label=f'discreteness = {self.discreteness}')
         plt.plot([], label=f'chord = {self.chord}')
-        plt.plot([], label=f'installation_angle'
-                           f' = {self.installation_angle:.{precision}f} [rad]'
-                           f' = {degrees(self.installation_angle):.{precision}f} [deg]')
-        plt.plot([], label=f'step = {self.step:.{precision}f} []')
+        plt.plot([], label=f'installation_angle = {self.installation_angle:.{precision}f}')
+        plt.plot([], label=f'step = {self.step:.{precision}f}')
         plt.plot([], label=f'start_point = ({self.start_point[0]:.{precision}f}, {self.start_point[1]:.{precision}f})')
 
         for key, value in self.parameters.items():
@@ -1237,16 +1235,17 @@ class Foil:
 
         xgmin, xgmax = X.min(), X.max()
 
-        x = array((xgmin,), dtype='float64')
+        x_upper = array((xgmin,), dtype='float64')
         while True:
-            X = x[-1] + step * tan2cos(derivative(fl, x[-1]))
+            X = x_upper[-1] + step * tan2cos(derivative(fl, x_upper[-1]))
             if X >= xgmax: break
-            x = np.append(x, X)
-        x = np.append(x, xgmax)
+            x_upper = np.append(x_upper, X)
+        x_upper = np.append(x_upper, xgmax)
+        del X
+        y_upper = fl(x_upper)
+        Au, _, Cu = coefficients_line(func=fl, x0=x_upper)
 
-        Au, _, Cu = coefficients_line(func=fl, x0=x)
-
-        def equations(vars, *args):
+        def equations(vars, *args) -> tuple:
             """СНЛАУ"""
             x0, y0, r0, xl = vars
             xu, yu, Au, Cu = args
@@ -1258,11 +1257,12 @@ class Foil:
                     abs(Al * x0 + (-1) * y0 + Cl) / sqrt(Al ** 2 + 1) - r0,  # расстояние от точки окружности
                     ((xl - x0) ** 2 + (fu_(xl) - y0) ** 2) - r0 ** 2)  # до кривой спинки
 
-        xd, yd, d = list(), list(), list()
+        xcircle, ycircle, diameter = list(), list(), list()
+        # results = list()
 
-        for xu, yu, a_u, c_u in tqdm(zip(x, fl(x), Au, Cu), desc='Channel calculation', total=len(x)):
+        for xu, yu, a_u, c_u in tqdm(zip(x_upper, y_upper, Au, Cu), desc='Channel calculation', total=len(x_upper)):
             try:
-                res = fsolve(equations, array((xu, yu, self.__step / 2, xu)), args=(xu, yu, a_u, c_u))
+                res = fsolve(equations, array((xu, (yu + fu_(xu)) / 2, self.step / 2, xu)), args=(xu, yu, a_u, c_u))
             except Exception as exception:
                 continue
 
@@ -1270,22 +1270,23 @@ class Foil:
                     fu_(res[0]) < res[1] < fl(res[0]),  # y центра окружности лежит в канале
                     res[2] * 2 <= self.step,  # диаметр окружности не превышает ширину канала
                     xgmin <= res[3] <= xgmax)):
-                xd.append(res[0])
-                yd.append(res[1])
-                d.append(res[2] * 2)
+                xcircle.append(res[0]), ycircle.append(res[1]), diameter.append(res[2] * 2)
+                # results.append(res)
 
-        r = zeros(len(d), dtype='float64')
-        for i in range(1, len(d)): r[i] = r[i - 1] + distance((xd[i - 1], yd[i - 1]), (xd[i], yd[i]))
+        r = zeros(len(diameter), dtype='float64')
+        for i in range(1, len(diameter)):
+            r[i] = r[i - 1] + distance((xcircle[i - 1], ycircle[i - 1]), (xcircle[i], ycircle[i]))
 
-        self.__channel = {'x': tuple(xd), 'y': tuple(yd), 'd': tuple(d), 'r': tuple(r)}
+        self.__channel = {'x': tuple(map(float, xcircle)), 'y': tuple(map(float, ycircle)),
+                          'd': tuple(map(float, diameter)), 'r': tuple(map(float, r))}
 
         return self.__channel
 
     def stress(self, density: tuple | list, pressure: tuple | list,
                velocity_axial: tuple | list, velocity_tangential: tuple | list):
         """Усилие от газодинамической нагрузки []"""
-        for paramter in (density, pressure, velocity_axial, velocity_tangential):
-            assert isinstance(paramter, (tuple, list)) and 2 <= len(paramter)
+        for parameter in (density, pressure, velocity_axial, velocity_tangential):
+            assert isinstance(parameter, (tuple, list)) and 2 <= len(parameter)
 
         qx = lambda z: ((pressure[0] - pressure[-1]) -
                         density[0] * velocity_axial[0] * (velocity_axial[-1] - velocity_axial[0]))
