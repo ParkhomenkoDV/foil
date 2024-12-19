@@ -1233,65 +1233,68 @@ class Foil:
 
         X, Y = array(self.coordinates, dtype='float64').T
 
-        xgmin, xgmax = X.min(), X.max()
+        xmin, xmax = X.min(), X.max()
 
-        x_upper = array((xgmin,), dtype='float64')
+        x_lower = array((xmin,), dtype='float64')
         while True:
-            X = x_upper[-1] + step * tan2cos(derivative(fl, x_upper[-1]))
-            if X >= xgmax: break
-            x_upper = np.append(x_upper, X)
-        x_upper = np.append(x_upper, xgmax)
+            X = x_lower[-1] + step * tan2cos(derivative(fl, x_lower[-1]))
+            if X >= xmax: break
+            x_lower = np.append(x_lower, X)
+        x_lower = np.append(x_lower, xmax)
+        y_lower = fl(x_lower)
         del X
-        y_upper = fl(x_upper)
-        Au, _, Cu = coefficients_line(func=fl, x0=x_upper)
+        a_lower, _, c_lower = coefficients_line(func=fl, x0=x_lower)
 
         def equations(vars, *args) -> tuple:
             """СНЛАУ"""
-            x0, y0, r0, xl = vars
-            xu, yu, Au, Cu = args
+            x0, y0, r0, xl = vars  # искомые корни
+            xu, yu, au, cu = args  # данные параметры
 
             Al, _, Cl = coefficients_line(func=fu_, x0=xl)
 
-            return (abs(Au * x0 + (-1) * y0 + Cu) / sqrt(Au ** 2 + 1) - r0,  # расстояние от точки окружности
+            return (abs(au * x0 + (-1) * y0 + cu) / sqrt(au ** 2 + 1) - r0,  # расстояние от точки окружности
                     ((xu - x0) ** 2 + (yu - y0) ** 2) - r0 ** 2,  # до кривой корыта
                     abs(Al * x0 + (-1) * y0 + Cl) / sqrt(Al ** 2 + 1) - r0,  # расстояние от точки окружности
                     ((xl - x0) ** 2 + (fu_(xl) - y0) ** 2) - r0 ** 2)  # до кривой спинки
 
         xcircle, ycircle, diameter = list(), list(), list()
-        # results = list()
 
-        for xu, yu, a_u, c_u in tqdm(zip(x_upper, y_upper, Au, Cu), desc='Channel calculation', total=len(x_upper)):
+        for i in tqdm(range(len(x_lower)), desc='Channel calculation', total=len(x_lower)):
             try:
-                res = fsolve(equations, array((xu, (yu + fu_(xu)) / 2, self.step / 2, xu)), args=(xu, yu, a_u, c_u))
+                result = fsolve(equations,
+                                array((x_lower[i], (y_lower[i] + fu_(x_lower[i])) / 2, self.step / 2, x_lower[i]),
+                                      dtype='float64'),
+                                args=(x_lower[i], y_lower[i], a_lower[i], c_lower[i]))
             except Exception as exception:
                 continue
 
-            if all((xgmin <= res[0] <= xgmax,  # x центра окружности лежит в канале
-                    fu_(res[0]) < res[1] < fl(res[0]),  # y центра окружности лежит в канале
-                    res[2] * 2 <= self.step,  # диаметр окружности не превышает ширину канала
-                    xgmin <= res[3] <= xgmax)):
-                xcircle.append(res[0]), ycircle.append(res[1]), diameter.append(res[2] * 2)
-                # results.append(res)
+            if all((xmin <= result[0] <= xmax,  # x центра окружности лежит в канале
+                    fu_(result[0]) < result[1] < fl(result[0]),  # y центра окружности лежит в канале
+                    result[2] * 2 <= self.step,  # диаметр окружности не превышает ширину канала
+                    xmin <= result[3] <= xmax)):
+                xcircle.append(result[0]), ycircle.append(result[1]), diameter.append(result[2] * 2)
 
-        r = zeros(len(diameter), dtype='float64')
-        for i in range(1, len(diameter)):
-            r[i] = r[i - 1] + distance((xcircle[i - 1], ycircle[i - 1]), (xcircle[i], ycircle[i]))
+        distances = sqrt(np.diff(xcircle) ** 2 + np.diff(ycircle) ** 2)  # расстояния между последовательными точками
+        r = np.zeros(len(diameter), dtype='float64')
+        r[1:] = np.cumsum(distances)
 
         self.__channel = {'x': tuple(map(float, xcircle)), 'y': tuple(map(float, ycircle)),
                           'd': tuple(map(float, diameter)), 'r': tuple(map(float, r))}
 
         return self.__channel
 
-    def stress(self, density: tuple | list, pressure: tuple | list,
-               velocity_axial: tuple | list, velocity_tangential: tuple | list):
-        """Усилие от газодинамической нагрузки []"""
+    def stress(self, density: tuple | list | np.ndarray,
+               pressure: tuple | list | np.ndarray,
+               velocity_axial: tuple | list | np.ndarray,
+               velocity_tangential: tuple | list | np.ndarray) -> tuple[float, float]:
+        """Давление от газодинамической нагрузки [2, с. 57]"""
         for parameter in (density, pressure, velocity_axial, velocity_tangential):
-            assert isinstance(parameter, (tuple, list)) and 2 <= len(parameter)
+            assert isinstance(parameter, (tuple, list, np.ndarray)) and 2 <= len(parameter)
 
-        qx = lambda z: ((pressure[0] - pressure[-1]) -
-                        density[0] * velocity_axial[0] * (velocity_axial[-1] - velocity_axial[0]))
-        qy = lambda z: (density[0] * velocity_axial[0] * (velocity_tangential[-1] - velocity_tangential[0]))
-        return qx, qy
+        pressure_x = ((pressure[0] - pressure[-1]) -
+                      density[0] * velocity_axial[0] * (velocity_axial[-1] - velocity_axial[0]))
+        presuure_y = (density[0] * velocity_axial[0] * (velocity_tangential[-1] - velocity_tangential[0]))
+        return pressure_x, presuure_y
 
     # TODO
     def cfd(self, vx, vy, padding=0.2, xlim=None, ylim=None):
