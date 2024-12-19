@@ -1293,8 +1293,8 @@ class Foil:
 
         pressure_x = ((pressure[0] - pressure[-1]) -
                       density[0] * velocity_axial[0] * (velocity_axial[-1] - velocity_axial[0]))
-        presuure_y = (density[0] * velocity_axial[0] * (velocity_tangential[-1] - velocity_tangential[0]))
-        return pressure_x, presuure_y
+        pressure_y = (density[0] * velocity_axial[0] * (velocity_tangential[-1] - velocity_tangential[0]))
+        return pressure_x, pressure_y
 
     # TODO
     def cfd(self, vx, vy, padding=0.2, xlim=None, ylim=None):
