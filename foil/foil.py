@@ -1206,12 +1206,17 @@ class Foil:
         jx_major = jx0 * cos(major_angle) ** 2 + jy0 * sin(major_angle) ** 2 - 2 * jxy0 * sin(2 * major_angle)
         jy_major = jx0 * sin(major_angle) ** 2 + jy0 * cos(major_angle) ** 2 + 2 * jxy0 * sin(2 * major_angle)
 
+        # жесткость # TODO: [2, c. 65]
+        stiffness = integrate.quad(lambda s: sqrt(1 + derivative(fu, x) ** 2),
+                                a, b, 
+                                epsrel=epsrel, limit=limit)[0] / 3 
+
         properties = {'chord': chord, 'length_upper': length_upper, 'length_lower': length_lower,
                       'xf': xf, 'f': f, 'xc': xc, 'c': c,
                       'area': area, 'sx': sx, 'sy': sy, 'x0': x0, 'y0': y0,
                       'jx': jx, 'jy': jy, 'jxy': jxy, 'jx0': jx0, 'jy0': jy0, 'jxy0': jxy0,
                       'jp': jp, 'wp': wp, 'major_angle': major_angle,
-                      'jx_major': jx_major, 'jy_major': jy_major, }
+                      'jx_major': jx_major, 'jy_major': jy_major, 'stiffness': stiffness}
 
         if relative:
             self.__relative_properties = properties
