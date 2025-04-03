@@ -1207,6 +1207,11 @@ class Foil:
         jy_major = jx0 * sin(major_angle) ** 2 + jy0 * cos(major_angle) ** 2 + 2 * jxy0 * sin(2 * major_angle)
 
         # жесткость # TODO: [2, c. 65]
+        """
+        найти диамтеры и центры окружностей внутри профиля через f_solve редкими точками (для скорости)
+        аппроксимировать (не интерполировать) диамтеры по х
+        посчитать интеграл жесткости
+        """
         stiffness = integrate.quad(lambda s: sqrt(1 + derivative(fu, x) ** 2),
                                 a, b, 
                                 epsrel=epsrel, limit=limit)[0] / 3 
