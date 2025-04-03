@@ -1212,9 +1212,10 @@ class Foil:
         аппроксимировать (не интерполировать) диамтеры по х
         посчитать интеграл жесткости
         """
-        stiffness = integrate.quad(lambda s: sqrt(1 + derivative(fu, x) ** 2),
+        stiffness = integrate.quad(lambda s: sqrt(1 + derivative(fu, s) ** 2),
                                 a, b, 
                                 epsrel=epsrel, limit=limit)[0] / 3 
+        
 
         properties = {'chord': chord, 'length_upper': length_upper, 'length_lower': length_lower,
                       'xf': xf, 'f': f, 'xc': xc, 'c': c,
