@@ -10,7 +10,7 @@ with open('requirements.txt', 'rt') as file:
 
 setup(
     name='foil',
-    version=time.strftime('%Y.%m.%d.%H.%M', time.localtime()),
+    version=time.strftime('%Y.%m.%d.%H', time.localtime()),
     description='lib',
     long_description=long_description,
     long_description_content_type='text/markdown',  # если long_description = .md
