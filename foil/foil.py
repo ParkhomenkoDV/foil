@@ -1224,6 +1224,8 @@ class Foil:
                       'jp': jp, 'wp': wp, 'major_angle': major_angle,
                       'jx_major': jx_major, 'jy_major': jy_major, 'stiffness': stiffness}
 
+        for key, value in properties.items(): properties[key] = float(value)  # перевод во float
+
         if relative:
             self.__relative_properties = properties
         else:
