@@ -1,7 +1,6 @@
 import os
 import sys
 import time
-from types import MappingProxyType  # неизменяемый словарь
 from functools import lru_cache
 
 from tqdm import tqdm
@@ -26,16 +25,16 @@ sys.path.append(HERE)
 from curves import bernstein_curve
 
 # Список использованной литературы
-REFERENCES = MappingProxyType({
+REFERENCES = {
     1: '''Теория и проектирование газовой турбины: учебное пособие /
 В.Е. Михальцев, В.Д. Моляков; под ред. А.Ю. Вараксина. -
 Москва: Издательство МГТУ им. Н.Э. Баумана, 2020. - 230, [2] с.: ил.''',
     2: '''Елисеев Ю.С., Крымов В.В., Манушин Э.А. и др.
 Конструирование и расчет на прочность турбомашин ГТ и КУ:
-Учебник для студентов вузов / Под общей ред. М.И. Осипова. – М.: МГТУ, 2009''', })
+Учебник для студентов вузов / Под общей ред. М.И. Осипова. – М.: МГТУ, 2009''', }
 
 # словарь терминов их описания, единицы измерения и граничные значения
-VOCABULARY = MappingProxyType({
+VOCABULARY = {
     'method': {
         'description': 'название профиля',
         'unit': '[]',
@@ -280,10 +279,10 @@ VOCABULARY = MappingProxyType({
         'unit': '[]',
         'type': (bool,),
         'assert': tuple(), },
-})
+}
 
 # методы и параметры профилирования профиля
-METHODS = MappingProxyType({
+METHODS = {
     'NACA': {'description': '''Четырёхзначные профиль крыла NACA определяется следующим образом:
 Первая цифра обозначает максимальный прогиб в процентах от хорды.
 Вторая цифра, описывающая расстояние максимального изгиба от передней кромки аэродинамического профиля в десятых долях хорды.
@@ -330,7 +329,7 @@ METHODS = MappingProxyType({
                    'relative_circles': VOCABULARY['relative_circles'],
                    'rotation_angle': VOCABULARY['rotation_angle'],
                    'x_ray_cross': VOCABULARY['x_ray_cross'],
-                   'is_foil': VOCABULARY['is_foil'], }}, })
+                   'is_foil': VOCABULARY['is_foil'], }}, }
 
 
 class LinesIntersectionError(Exception):
@@ -1036,7 +1035,7 @@ class Foil:
 
         self.__coordinates = self.transform(self.__relative_coordinates,
                                             transfer=self.start_point,
-                                            angle=self.__installation_angle,
+                                            angle=self.installation_angle,
                                             scale=self.chord)
 
     @staticmethod
@@ -1310,7 +1309,7 @@ class Foil:
         return pressure_x, pressure_y
 
     # TODO
-    def cfd(self, vx, vy, padding=0.2, xlim=None, ylim=None):
+    def cfx(self, vx, vy, padding=0.2, xlim=None, ylim=None):
         """Продувка"""
         assert isinstance(vx, (int, float, np.number))
         assert isinstance(vy, (int, float, np.number))
@@ -1483,7 +1482,7 @@ def main() -> None:
         print(Fore.MAGENTA + 'foil channel:' + Fore.RESET)
         print(f'{foil.channel}')
 
-        # foil.cfd(10, 5)
+        # foil.cfx(10, 5)
 
 
 if __name__ == '__main__':
