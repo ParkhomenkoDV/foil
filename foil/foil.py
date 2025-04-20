@@ -635,9 +635,9 @@ class Foil:
     def to_dataframe(self, relative: bool = False) -> pd.DataFrame:
         """Перевод координат в pandas.DataFrame"""
         if relative:
-            return pd.DataFrame(self.coordinates, columns=('x', 'y'))
-        else:
             return pd.DataFrame(self.relative_coordinates, columns=('x', 'y'))
+        else:
+            return pd.DataFrame(self.coordinates, columns=('x', 'y'))
 
     def write(self, extension: str, folder: str = 'foil_datas',
               index: bool = False, header: bool = True,
