@@ -15,9 +15,10 @@ setup(
     long_description=long_description,
     long_description_content_type='text/markdown',  # если long_description = .md
     author='Daniil Andryushin',
-    author_email='',
+    author_email='parkho.m.enko@mail.ru',
     url='https://github.com/ParkhomenkoDV/foil.git',
-    packages=find_packages(),
+    packages=find_packages(where="src", exclude=["tests*", "docs*", "examples*"]),
+    package_dir={"": "src"},
     python_requires='>=3.11',
     install_requires=install_requires,
 )
