@@ -34,6 +34,7 @@ for method, value in METHODS.items():
 **See tutorial in disk/examples/**
 
 ## Project structure
+```
 foil/
 |--- examples  # tutorial
 |--- src/foil  # source code
@@ -42,4 +43,5 @@ foil/
 |--- README.md
 |--- requirements.txt
 |--- setup.py
+```
 
