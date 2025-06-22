@@ -6,6 +6,7 @@ __pycache__/
 src/datas/
 foils/
 
+*.DS_Store
 *.pickle
 *.pkl
 *.txt
