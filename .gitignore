@@ -1,6 +1,8 @@
 __pycache__/
 .idea/
 
+**/.DS_Store
+
 src/datas/
 foils/
 
