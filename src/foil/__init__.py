@@ -1,3 +1,1 @@
-from .foil import REFERENCES, VOCABULARY, METHODS, Foil
-from .foil import bernstein_curve
-
+from .foil import METHODS, REFERENCES, VOCABULARY, Foil, bernstein_curve

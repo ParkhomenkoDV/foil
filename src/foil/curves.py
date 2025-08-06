@@ -1,8 +1,7 @@
-from numpy import array, zeros, linspace
-from scipy.interpolate import BPoly
 import matplotlib.pyplot as plt
-
 from decorators import timeit
+from numpy import array, linspace, zeros
+from scipy.interpolate import BPoly
 
 
 @timeit()
@@ -13,7 +12,7 @@ def bezier_curve(points, N: int = 10):
         """Вес Безье"""
         return d1 + (d2 - d1) * t
 
-    '''if type(points) is not array:
+    """if type(points) is not array:
         print('points is not list');
         return
         if type(xp) is list and type(yp) is list and len(xp) != len(yp): print('len(x)=/=len(y)'); return
@@ -21,16 +20,25 @@ def bezier_curve(points, N: int = 10):
         if type(show) is not bool:
             print('show is not bool');
             return
-    else:'''
+    else:"""
     points = array(points)
     p = zeros((N, 2))
     for i in range(N):
         xt, yt = points[:, 0], points[:, 1]
         while True:
             if len(xt) == 3:
-                x0, y0 = bezier_value(xt[0], xt[1], i / (N - 1)), bezier_value(yt[0], yt[1], i / (N - 1))
-                x1, y1 = bezier_value(xt[1], xt[2], i / (N - 1)), bezier_value(yt[1], yt[2], i / (N - 1))
-                p[i][0], p[i][1] = bezier_value(x0, x1, i / (N - 1)), bezier_value(y0, y1, i / (N - 1))
+                x0, y0 = (
+                    bezier_value(xt[0], xt[1], i / (N - 1)),
+                    bezier_value(yt[0], yt[1], i / (N - 1)),
+                )
+                x1, y1 = (
+                    bezier_value(xt[1], xt[2], i / (N - 1)),
+                    bezier_value(yt[1], yt[2], i / (N - 1)),
+                )
+                p[i][0], p[i][1] = (
+                    bezier_value(x0, x1, i / (N - 1)),
+                    bezier_value(y0, y1, i / (N - 1)),
+                )
                 break
             else:
                 xN, yN = [], []
@@ -50,29 +58,39 @@ def bernstein_curve(points, N: int = 10):
     return curve(t)
 
 
-def show(*args, title='curve'):
+def show(*args, title="curve"):
     plt.title(title, fontsize=14)
     plt.grid(True)  # сетка
-    for points in args: plt.plot(*points.T, ls='solid')
-    plt.axis('equal')
+    for points in args:
+        plt.plot(*points.T, ls="solid")
+    plt.axis("equal")
     plt.show()
 
 
 def test() -> None:
     """Тестирование"""
-    points = ((1, 0), (0.4, 0.4), (0.05, 0.15), (0, 0), (0.1, -0.1), (0.2, -0.1), (0.5, 0.15), (1, 0))
+    points = (
+        (1, 0),
+        (0.4, 0.4),
+        (0.05, 0.15),
+        (0, 0),
+        (0.1, -0.1),
+        (0.2, -0.1),
+        (0.5, 0.15),
+        (1, 0),
+    )
     points = array(points)
 
     bezier_points = bezier_curve(points, N=1_000)
     # print(bezier_points)
-    show(points, bezier_points, title='Bezier curve')
+    show(points, bezier_points, title="Bezier curve")
 
     bernstein_points = bernstein_curve(points, N=1_000)
     # print(bernstein_points)
-    show(points, bernstein_points, title='Bernstein curve')
+    show(points, bernstein_points, title="Bernstein curve")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import cProfile
 
-    cProfile.run('test()', sort='cumtime')
+    cProfile.run("test()", sort="cumtime")
