@@ -1,13 +1,12 @@
 import os
 import sys
 import time
-from functools import lru_cache
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from colorama import Fore
-from decorators import timeit, warns
+from decorators import warns
 from mathematics import (
     Axis,
     angle_between,
@@ -25,7 +24,6 @@ from numpy import (
     array,
     cos,
     degrees,
-    full,
     full_like,
     inf,
     isinf,
@@ -38,7 +36,6 @@ from numpy import (
     sqrt,
     tan,
     zeros,
-    zeros_like,
 )
 from numpy import arctan as atan
 from scipy import integrate, interpolate
@@ -1108,16 +1105,15 @@ class Foil:
         O_inlet = relative_inlet_radius, k_inlet * relative_inlet_radius
         O_outlet = 1 - relative_outlet_radius, -k_outlet * relative_outlet_radius
 
-        @lru_cache(maxsize=None)
         def A(k, angle):
             """Коэффициент A прямой"""
             return tan(atan(k) + angle)
 
         B = -1  # коэффициент B прямой
 
-        C = (
-            lambda A, radius, O: sqrt(A**2 + B**2) * radius - A * O[0] - B * O[1]
-        )  # коэффициент C прямой
+        def C(A, radius, O):
+            """Коэффициент C прямой"""
+            return sqrt(A**2 + B**2) * radius - A * O[0] - B * O[1]
 
         # точки пересечения линий спинки и корыта
         cl_u = coordinate_intersection_lines(
